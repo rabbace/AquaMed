@@ -8,7 +8,7 @@ export async function getActiveProfileId() {
     const active = members.find(m => m.active);
     if (active) return String(active.id);
   }
-  return '1'; // default
+  return '1';
 }
 
 export async function getActiveProfileName() {
@@ -46,6 +46,18 @@ export async function setWaterGoal(goal) {
   await AsyncStorage.setItem(`waterGoal_${pid}`, String(goal));
 }
 
+// Water Alarm
+export async function getWaterAlarm() {
+  const pid = await getActiveProfileId();
+  const saved = await AsyncStorage.getItem(`waterAlarm_${pid}`);
+  return saved ? JSON.parse(saved) : { enabled: false, intervalMin: 60, startHour: 8, endHour: 22 };
+}
+
+export async function setWaterAlarm(settings) {
+  const pid = await getActiveProfileId();
+  await AsyncStorage.setItem(`waterAlarm_${pid}`, JSON.stringify(settings));
+}
+
 // Medicines
 export async function getMedicines() {
   const pid = await getActiveProfileId();
@@ -81,6 +93,30 @@ export async function saveCalorieData(meals, date) {
   const pid = await getActiveProfileId();
   const key = `calories_${pid}_${date || new Date().toDateString()}`;
   await AsyncStorage.setItem(key, JSON.stringify(meals));
+}
+
+// Gender
+export async function getGender() {
+  const pid = await getActiveProfileId();
+  const saved = await AsyncStorage.getItem(`gender_${pid}`);
+  return saved || null;
+}
+
+export async function setGender(gender) {
+  const pid = await getActiveProfileId();
+  await AsyncStorage.setItem(`gender_${pid}`, gender);
+}
+
+// Health Profile (height, weight, activity)
+export async function getHealthProfile() {
+  const pid = await getActiveProfileId();
+  const saved = await AsyncStorage.getItem(`healthProfile_${pid}`);
+  return saved ? JSON.parse(saved) : { height: '', weight: '', activityLevel: 'moderate' };
+}
+
+export async function setHealthProfile(profile) {
+  const pid = await getActiveProfileId();
+  await AsyncStorage.setItem(`healthProfile_${pid}`, JSON.stringify(profile));
 }
 
 // Onboarding

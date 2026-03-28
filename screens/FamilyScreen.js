@@ -1,25 +1,55 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme';
+import { getGender, setGender, getHealthProfile, setHealthProfile } from '../storage';
 
 const AVATAR_COLORS = ['#2196F3', '#9C27B0', '#FF9800', '#4CAF50', '#E91E63', '#00BCD4', '#FF5722', '#3F51B5'];
 const AVATAR_ICONS = ['person', 'woman', 'man', 'happy', 'heart', 'flower', 'star', 'diamond'];
+
+const ACTIVITY_LEVELS = [
+  { key: 'sedentary', label: 'Hareketsiz', desc: 'Masa başı iş, az hareket', icon: 'bed-outline', factor: 1.2 },
+  { key: 'light', label: 'Hafif Aktif', desc: 'Haftada 1-3 gün egzersiz', icon: 'walk-outline', factor: 1.375 },
+  { key: 'moderate', label: 'Orta Aktif', desc: 'Haftada 3-5 gün egzersiz', icon: 'bicycle-outline', factor: 1.55 },
+  { key: 'active', label: 'Aktif', desc: 'Haftada 6-7 gün egzersiz', icon: 'fitness-outline', factor: 1.725 },
+  { key: 'veryactive', label: 'Çok Aktif', desc: 'Yoğun antrenman / fiziksel iş', icon: 'barbell-outline', factor: 1.9 },
+];
 
 export default function FamilyScreen() {
   const { theme } = useTheme();
   const [members, setMembers] = useState([{ id: 1, name: 'Ben', active: true, avatar: 0, color: 0 }]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [healthModalVisible, setHealthModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(0);
   const [selectedColor, setSelectedColor] = useState(0);
 
+  // Health profile state
+  const [gender, setGenderState] = useState(null);
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
+  const [activityLevel, setActivityLevel] = useState('moderate');
+
   useEffect(() => { loadMembers(); }, []);
+
+  useFocusEffect(
+    useCallback(() => { loadHealthData(); }, [])
+  );
 
   const loadMembers = async () => {
     const saved = await AsyncStorage.getItem('family');
     if (saved) setMembers(JSON.parse(saved));
+  };
+
+  const loadHealthData = async () => {
+    const gen = await getGender();
+    setGenderState(gen);
+    const hp = await getHealthProfile();
+    setHeight(hp.height || '');
+    setWeight(hp.weight || '');
+    setActivityLevel(hp.activityLevel || 'moderate');
   };
 
   const addMember = async () => {
@@ -38,6 +68,7 @@ export default function FamilyScreen() {
     const updated = members.map(m => ({ ...m, active: m.id === id }));
     setMembers(updated);
     await AsyncStorage.setItem('family', JSON.stringify(updated));
+    loadHealthData();
   };
 
   const deleteMember = async (id) => {
@@ -57,6 +88,37 @@ export default function FamilyScreen() {
     ]);
   };
 
+  const saveHealthData = async () => {
+    await setGender(gender);
+    await setHealthProfile({ height, weight, activityLevel });
+    setHealthModalVisible(false);
+  };
+
+  // BMI calculation
+  const bmi = (height && weight) ? (parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1) : null;
+  const getBmiCategory = (val) => {
+    if (!val) return { text: '-', color: '#999' };
+    const v = parseFloat(val);
+    if (v < 18.5) return { text: 'Zayıf', color: '#2196F3' };
+    if (v < 25) return { text: 'Normal', color: '#4CAF50' };
+    if (v < 30) return { text: 'Fazla Kilolu', color: '#FF9800' };
+    return { text: 'Obez', color: '#E91E63' };
+  };
+  const bmiCat = getBmiCategory(bmi);
+
+  // Daily calorie need
+  const getDailyCalorie = () => {
+    if (!height || !weight || !gender) return null;
+    const h = parseFloat(height);
+    const w = parseFloat(weight);
+    const age = 30; // default estimate
+    let bmr;
+    if (gender === 'male') bmr = 10 * w + 6.25 * h - 5 * age + 5;
+    else bmr = 10 * w + 6.25 * h - 5 * age - 161;
+    const factor = ACTIVITY_LEVELS.find(a => a.key === activityLevel)?.factor || 1.55;
+    return Math.round(bmr * factor);
+  };
+
   const activeMember = members.find(m => m.active);
   const s = getStyles(theme);
 
@@ -67,17 +129,79 @@ export default function FamilyScreen() {
           <View style={[s.activeAvatar, { backgroundColor: AVATAR_COLORS[activeMember.color || 0] }]}>
             <Ionicons name={AVATAR_ICONS[activeMember.avatar || 0]} size={28} color="#fff" />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={s.activeLabel}>Aktif Profil</Text>
             <Text style={s.activeName}>{activeMember.name}</Text>
           </View>
+          <TouchableOpacity style={s.healthBtn} onPress={() => setHealthModalVisible(true)}>
+            <Ionicons name="body-outline" size={18} color={theme.primary} />
+            <Text style={s.healthBtnText}>Sağlık</Text>
+          </TouchableOpacity>
         </View>
       )}
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Health Summary Card */}
+        <View style={s.healthCard}>
+          <Text style={s.healthCardTitle}>Sağlık Profili</Text>
+          <View style={s.healthRow}>
+            <View style={s.healthItem}>
+              <Ionicons name={gender === 'male' ? 'male' : gender === 'female' ? 'female' : 'person-outline'} size={22} color={gender === 'male' ? '#1976D2' : gender === 'female' ? '#C2185B' : theme.textMuted} />
+              <Text style={s.healthItemValue}>{gender === 'male' ? 'Erkek' : gender === 'female' ? 'Kadın' : '-'}</Text>
+              <Text style={s.healthItemLabel}>Cinsiyet</Text>
+            </View>
+            <View style={s.healthDivider} />
+            <View style={s.healthItem}>
+              <Ionicons name="resize-outline" size={22} color={theme.primary} />
+              <Text style={s.healthItemValue}>{height ? `${height} cm` : '-'}</Text>
+              <Text style={s.healthItemLabel}>Boy</Text>
+            </View>
+            <View style={s.healthDivider} />
+            <View style={s.healthItem}>
+              <Ionicons name="scale-outline" size={22} color={theme.warning} />
+              <Text style={s.healthItemValue}>{weight ? `${weight} kg` : '-'}</Text>
+              <Text style={s.healthItemLabel}>Kilo</Text>
+            </View>
+            <View style={s.healthDivider} />
+            <View style={s.healthItem}>
+              <Ionicons name="speedometer-outline" size={22} color={bmiCat.color} />
+              <Text style={[s.healthItemValue, { color: bmiCat.color }]}>{bmi || '-'}</Text>
+              <Text style={s.healthItemLabel}>BKİ</Text>
+            </View>
+          </View>
+          {bmi && (
+            <View style={s.bmiBar}>
+              <View style={s.bmiBarTrack}>
+                <View style={[s.bmiBarSection, { flex: 18.5, backgroundColor: '#2196F3' }]} />
+                <View style={[s.bmiBarSection, { flex: 6.5, backgroundColor: '#4CAF50' }]} />
+                <View style={[s.bmiBarSection, { flex: 5, backgroundColor: '#FF9800' }]} />
+                <View style={[s.bmiBarSection, { flex: 10, backgroundColor: '#E91E63' }]} />
+              </View>
+              <View style={[s.bmiIndicator, { left: `${Math.min(Math.max((parseFloat(bmi) / 40) * 100, 0), 100)}%` }]}>
+                <View style={[s.bmiDot, { backgroundColor: bmiCat.color }]} />
+              </View>
+              <View style={s.bmiLabels}>
+                <Text style={s.bmiLabel}>Zayıf</Text>
+                <Text style={s.bmiLabel}>Normal</Text>
+                <Text style={s.bmiLabel}>Kilolu</Text>
+                <Text style={s.bmiLabel}>Obez</Text>
+              </View>
+            </View>
+          )}
+          {bmi && (
+            <Text style={[s.bmiResult, { color: bmiCat.color }]}>
+              {bmiCat.text} ({bmi}) {getDailyCalorie() ? `• Günlük ~${getDailyCalorie()} kcal` : ''}
+            </Text>
+          )}
+          <TouchableOpacity style={s.editHealthBtn} onPress={() => setHealthModalVisible(true)}>
+            <Ionicons name="create-outline" size={16} color={theme.primary} />
+            <Text style={s.editHealthText}>{bmi ? 'Düzenle' : 'Sağlık bilgilerini gir'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={s.infoCard}>
           <Ionicons name="information-circle" size={20} color={theme.primary} />
-          <Text style={s.infoText}>Aktif profile göre su ve ilaç takibi yapılır. Profil seçmek için dokunun, silmek için basılı tutun.</Text>
+          <Text style={s.infoText}>Profil seçmek için dokunun, silmek için basılı tutun.</Text>
         </View>
 
         <Text style={s.sectionTitle}>Tüm Profiller ({members.length})</Text>
@@ -107,6 +231,7 @@ export default function FamilyScreen() {
         <Ionicons name="person-add" size={24} color="#fff" />
       </TouchableOpacity>
 
+      {/* Add Profile Modal */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={s.modalOverlay}>
           <View style={s.modal}>
@@ -143,10 +268,67 @@ export default function FamilyScreen() {
             <TouchableOpacity style={[s.saveBtn, !newName && s.saveBtnDisabled]} onPress={addMember} disabled={!newName}>
               <Text style={s.saveBtnText}>Profil Ekle</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); setNewName(''); setSelectedAvatar(0); setSelectedColor(0); }}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); setNewName(''); }}>
               <Text style={s.cancelBtnText}>İptal</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      {/* Health Profile Modal */}
+      <Modal visible={healthModalVisible} transparent animationType="slide">
+        <View style={s.modalOverlay}>
+          <ScrollView contentContainerStyle={{ justifyContent: 'flex-end', flexGrow: 1 }}>
+            <View style={s.modal}>
+              <View style={s.modalHandle} />
+              <Text style={s.modalTitle}>Sağlık Profili</Text>
+
+              {/* Gender */}
+              <Text style={s.inputLabel}>Cinsiyet</Text>
+              <View style={s.genderRow}>
+                <TouchableOpacity style={[s.genderBtn, gender === 'male' && s.genderBtnActive]} onPress={() => setGenderState('male')}>
+                  <Ionicons name="male" size={22} color={gender === 'male' ? '#fff' : '#1976D2'} />
+                  <Text style={[s.genderBtnText, gender === 'male' && { color: '#fff' }]}>Erkek</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.genderBtn, s.genderBtnF, gender === 'female' && s.genderBtnFActive]} onPress={() => setGenderState('female')}>
+                  <Ionicons name="female" size={22} color={gender === 'female' ? '#fff' : '#C2185B'} />
+                  <Text style={[s.genderBtnText, gender === 'female' && { color: '#fff' }]}>Kadın</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Height & Weight */}
+              <View style={s.hwRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.inputLabel}>Boy (cm)</Text>
+                  <TextInput style={s.input} placeholder="175" value={height} onChangeText={setHeight} keyboardType="number-pad" placeholderTextColor={theme.textMuted} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.inputLabel}>Kilo (kg)</Text>
+                  <TextInput style={s.input} placeholder="70" value={weight} onChangeText={setWeight} keyboardType="number-pad" placeholderTextColor={theme.textMuted} />
+                </View>
+              </View>
+
+              {/* Activity Level */}
+              <Text style={s.inputLabel}>Fiziksel Aktivite Düzeyi</Text>
+              {ACTIVITY_LEVELS.map(level => (
+                <TouchableOpacity key={level.key} style={[s.activityBtn, activityLevel === level.key && s.activityBtnActive]} onPress={() => setActivityLevel(level.key)}>
+                  <Ionicons name={level.icon} size={22} color={activityLevel === level.key ? '#fff' : theme.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.activityLabel, activityLevel === level.key && { color: '#fff' }]}>{level.label}</Text>
+                    <Text style={[s.activityDesc, activityLevel === level.key && { color: 'rgba(255,255,255,0.8)' }]}>{level.desc}</Text>
+                  </View>
+                  {activityLevel === level.key && <Ionicons name="checkmark-circle" size={20} color="#fff" />}
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity style={s.saveBtn} onPress={saveHealthData}>
+                <Text style={s.saveBtnText}>Kaydet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setHealthModalVisible(false)}>
+                <Text style={s.cancelBtnText}>İptal</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -163,18 +345,46 @@ const getStyles = (theme) => StyleSheet.create({
   activeAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   activeLabel: { fontSize: 13, color: theme.textMuted },
   activeName: { fontSize: 20, fontWeight: 'bold', color: theme.text, marginTop: 2 },
+  healthBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.primaryLight, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  healthBtnText: { fontSize: 13, fontWeight: '600', color: theme.primary },
+
+  // Health Card
+  healthCard: {
+    backgroundColor: theme.card, borderRadius: 16, padding: 20,
+    margin: 16, marginBottom: 0,
+    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder, elevation: theme.dark ? 0 : 2,
+  },
+  healthCardTitle: { fontSize: 17, fontWeight: 'bold', color: theme.text, marginBottom: 14 },
+  healthRow: { flexDirection: 'row', alignItems: 'center' },
+  healthItem: { flex: 1, alignItems: 'center', gap: 4 },
+  healthDivider: { width: 1, height: 40, backgroundColor: theme.cardBorder },
+  healthItemValue: { fontSize: 15, fontWeight: 'bold', color: theme.text },
+  healthItemLabel: { fontSize: 11, color: theme.textMuted },
+  bmiBar: { marginTop: 14, position: 'relative' },
+  bmiBarTrack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' },
+  bmiBarSection: { height: 8 },
+  bmiIndicator: { position: 'absolute', top: -2, marginLeft: -6 },
+  bmiDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff' },
+  bmiLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  bmiLabel: { fontSize: 9, color: theme.textMuted },
+  bmiResult: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 8 },
+  editHealthBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12,
+    paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.cardBorder,
+  },
+  editHealthText: { fontSize: 14, fontWeight: '600', color: theme.primary },
 
   infoCard: { flexDirection: 'row', backgroundColor: theme.primaryLight, borderRadius: 12, padding: 14, margin: 16, marginBottom: 8, gap: 10, alignItems: 'center' },
   infoText: { flex: 1, fontSize: 13, color: theme.primary, lineHeight: 18 },
-
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: theme.text, marginHorizontal: 16, marginTop: 12, marginBottom: 8 },
 
   card: {
     backgroundColor: theme.card, borderRadius: 16, padding: 16,
-    marginHorizontal: 16, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder,
-    elevation: theme.dark ? 0 : 2,
+    marginHorizontal: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center',
+    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder, elevation: theme.dark ? 0 : 2,
   },
   cardActive: { borderWidth: 2, borderColor: theme.primary },
   avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
@@ -191,7 +401,7 @@ const getStyles = (theme) => StyleSheet.create({
   modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.surface, alignSelf: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 22, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
   inputLabel: { fontSize: 13, fontWeight: '600', color: theme.textSecondary, marginBottom: 6 },
-  input: { borderWidth: 1.5, borderColor: theme.inputBorder, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 16, backgroundColor: theme.inputBg, color: theme.text },
+  input: { borderWidth: 1.5, borderColor: theme.inputBorder, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 14, backgroundColor: theme.inputBg, color: theme.text },
   avatarPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   avatarOption: { width: 46, height: 46, borderRadius: 14, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' },
   avatarOptionSelected: { backgroundColor: theme.primaryLight, borderWidth: 2, borderColor: theme.primary },
@@ -201,7 +411,30 @@ const getStyles = (theme) => StyleSheet.create({
   previewContainer: { alignItems: 'center', padding: 16, backgroundColor: theme.bg, borderRadius: 16, marginBottom: 16 },
   previewAvatar: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   previewName: { fontSize: 18, fontWeight: 'bold', color: theme.text },
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, alignItems: 'center' },
+
+  // Gender
+  genderRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  genderBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#E3F2FD', borderRadius: 14, padding: 14,
+  },
+  genderBtnActive: { backgroundColor: '#1976D2' },
+  genderBtnF: { backgroundColor: '#FCE4EC' },
+  genderBtnFActive: { backgroundColor: '#C2185B' },
+  genderBtnText: { fontSize: 16, fontWeight: 'bold', color: theme.text },
+
+  hwRow: { flexDirection: 'row', gap: 12 },
+
+  // Activity
+  activityBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.surface, borderRadius: 14, padding: 14, marginBottom: 8,
+  },
+  activityBtnActive: { backgroundColor: theme.primary },
+  activityLabel: { fontSize: 15, fontWeight: '600', color: theme.text },
+  activityDesc: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
+
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnDisabled: { backgroundColor: theme.surface },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   cancelBtn: { padding: 14, alignItems: 'center' },

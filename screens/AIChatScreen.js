@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { useState, useRef, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard } from 'react-native';
+import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 
@@ -65,6 +65,19 @@ const INITIAL_MESSAGE = { id: 1, role: 'assistant', text: 'Merhaba! 👋 Ben Aqu
 export default function AIChatScreen({ navigation }) {
   const { theme } = useTheme();
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   const clearChat = () => {
     setMessages([INITIAL_MESSAGE]);
@@ -82,9 +95,6 @@ export default function AIChatScreen({ navigation }) {
       ),
     });
   }, [navigation, theme]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const scrollRef = useRef(null);
 
   const sendMessage = (text) => {
     const msg = text || input.trim();
@@ -99,7 +109,6 @@ export default function AIChatScreen({ navigation }) {
       scrollRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    // Simulate AI thinking
     setTimeout(() => {
       const response = getResponse(msg);
       const aiMsg = { id: Date.now() + 1, role: 'assistant', text: response };
@@ -116,14 +125,15 @@ export default function AIChatScreen({ navigation }) {
   return (
     <KeyboardAvoidingView
       style={s.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <ScrollView
         ref={scrollRef}
         style={s.chatArea}
         contentContainerStyle={s.chatContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {messages.map(msg => (
           <View key={msg.id} style={[s.bubble, msg.role === 'user' ? s.userBubble : s.aiBubble]}>
@@ -175,6 +185,7 @@ export default function AIChatScreen({ navigation }) {
           onChangeText={setInput}
           multiline
           maxLength={500}
+          onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
         />
         <TouchableOpacity
           style={[s.sendBtn, !input.trim() && s.sendBtnDisabled]}
@@ -186,12 +197,14 @@ export default function AIChatScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Disclaimer */}
-      <View style={s.disclaimer}>
-        <Text style={s.disclaimerText}>
-          ⚕️ Bu asistan genel bilgi verir, tıbbi tavsiye yerine geçmez.
-        </Text>
-      </View>
+      {/* Disclaimer - hide when keyboard is open */}
+      {!keyboardVisible && (
+        <View style={s.disclaimer}>
+          <Text style={s.disclaimerText}>
+            ⚕️ Bu asistan genel bilgi verir, tıbbi tavsiye yerine geçmez.
+          </Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

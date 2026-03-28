@@ -178,6 +178,17 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Daily Achievement Banner */}
+      {waterCount >= waterGoal && takenMeds === medicines.length && medicines.length > 0 && (
+        <View style={s.achieveBanner}>
+          <Text style={s.achieveEmoji}>🏆</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.achieveTitle}>Harika İş!</Text>
+            <Text style={s.achieveText}>Bugünkü tüm hedeflerini tamamladın!</Text>
+          </View>
+        </View>
+      )}
+
       {/* Health Tip */}
       <View style={s.tipCard}>
         <View style={s.tipHeader}>
@@ -275,4 +286,14 @@ const getStyles = (theme) => StyleSheet.create({
   tipHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
   tipBadge: { fontSize: 13, fontWeight: 'bold', color: theme.warning },
   tipText: { fontSize: 15, color: theme.text, lineHeight: 22 },
+
+  achieveBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.accentLight, borderRadius: 16, padding: 16,
+    marginHorizontal: 16, marginTop: 12,
+    borderWidth: 1, borderColor: theme.accent,
+  },
+  achieveEmoji: { fontSize: 32 },
+  achieveTitle: { fontSize: 16, fontWeight: 'bold', color: theme.accent },
+  achieveText: { fontSize: 13, color: theme.text, marginTop: 2 },
 });

@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 
 import { ThemeProvider, useTheme } from './theme';
 import { hasSeenOnboarding } from './storage';
+import { requestPermissions } from './notifications';
 import HomeScreen from './screens/HomeScreen';
 import WaterScreen from './screens/WaterScreen';
 import MedicineScreen from './screens/MedicineScreen';
@@ -42,6 +43,7 @@ function AppContent() {
     const seen = await hasSeenOnboarding();
     setShowOnboarding(!seen);
     await SplashScreen.hideAsync();
+    requestPermissions();
   };
 
   if (showOnboarding === null) {

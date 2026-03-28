@@ -15,6 +15,7 @@ export default function StatisticsScreen() {
   const [totalWater, setTotalWater] = useState(0);
   const [weekCalories, setWeekCalories] = useState([]);
   const [calorieGoal, setCalorieGoalState] = useState(2000);
+  const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 });
 
   useFocusEffect(
     useCallback(() => { loadStats(); }, [])
@@ -69,6 +70,13 @@ export default function StatisticsScreen() {
       const calData = await getCalorieData(date.toDateString());
       const dayCal = calData.reduce((s, m) => s + m.cal, 0);
       calWeek.push({ day: dayNames[date.getDay()], cal: dayCal, isToday: i === 0 });
+      if (i === 0) {
+        setTodayMacros({
+          p: calData.reduce((s, m) => s + (m.p || 0), 0),
+          c: calData.reduce((s, m) => s + (m.c || 0), 0),
+          f: calData.reduce((s, m) => s + (m.f || 0), 0),
+        });
+      }
     }
     setWeekCalories(calWeek);
   };
@@ -193,6 +201,36 @@ export default function StatisticsScreen() {
         </View>
       </View>
 
+      {/* Today's Macros */}
+      <View style={s.macroCard}>
+        <Text style={s.chartTitle}>Bugünkü Makro Besinler</Text>
+        <View style={s.macroRow}>
+          <View style={s.macroItem}>
+            <View style={[s.macroCircle, { borderColor: '#E91E63' }]}>
+              <Text style={[s.macroValue, { color: '#E91E63' }]}>{todayMacros.p}g</Text>
+            </View>
+            <Text style={s.macroLabel}>Protein</Text>
+          </View>
+          <View style={s.macroItem}>
+            <View style={[s.macroCircle, { borderColor: '#FF9800' }]}>
+              <Text style={[s.macroValue, { color: '#FF9800' }]}>{todayMacros.c}g</Text>
+            </View>
+            <Text style={s.macroLabel}>Karbonhidrat</Text>
+          </View>
+          <View style={s.macroItem}>
+            <View style={[s.macroCircle, { borderColor: '#2196F3' }]}>
+              <Text style={[s.macroValue, { color: '#2196F3' }]}>{todayMacros.f}g</Text>
+            </View>
+            <Text style={s.macroLabel}>Yağ</Text>
+          </View>
+        </View>
+        <View style={s.macroCalRow}>
+          <Text style={s.macroCalText}>
+            Kalori dağılımı: P {todayMacros.p * 4} + K {todayMacros.c * 4} + Y {todayMacros.f * 9} = {todayMacros.p * 4 + todayMacros.c * 4 + todayMacros.f * 9} kcal
+          </Text>
+        </View>
+      </View>
+
       {/* Achievements */}
       <View style={s.achieveCard}>
         <Text style={s.chartTitle}>Başarılar</Text>
@@ -272,6 +310,24 @@ const getStyles = (theme) => StyleSheet.create({
   medsInfo: { flex: 1, gap: 8 },
   medsInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   medsInfoText: { fontSize: 14, color: theme.text },
+
+  macroCard: {
+    backgroundColor: theme.card, borderRadius: 16, padding: 20,
+    marginHorizontal: 16, marginTop: 16,
+    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder,
+    elevation: theme.dark ? 0 : 2,
+  },
+  macroRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 16 },
+  macroItem: { alignItems: 'center' },
+  macroCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    borderWidth: 3, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface,
+  },
+  macroValue: { fontSize: 16, fontWeight: 'bold' },
+  macroLabel: { fontSize: 11, color: theme.textMuted, marginTop: 6, fontWeight: '600' },
+  macroCalRow: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.cardBorder },
+  macroCalText: { fontSize: 12, color: theme.textSecondary, textAlign: 'center' },
 
   achieveCard: {
     backgroundColor: theme.card, borderRadius: 16, padding: 20,

@@ -4,7 +4,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme';
-import { getWaterData, setWaterData, getWaterGoal, setWaterGoal } from '../storage';
+import { getWaterData, setWaterData, getWaterGoal, setWaterGoal, getWaterAlarm, setWaterAlarm } from '../storage';
+import { scheduleWaterAlarms, requestPermissions } from '../notifications';
+
+const INTERVAL_OPTIONS = [
+  { min: 30, label: '30 dakika' },
+  { min: 45, label: '45 dakika' },
+  { min: 60, label: '1 saat' },
+  { min: 90, label: '1.5 saat' },
+  { min: 120, label: '2 saat' },
+  { min: 180, label: '3 saat' },
+];
 
 const { width } = Dimensions.get('window');
 const CIRCLE_SIZE = width * 0.5;
@@ -15,7 +25,9 @@ export default function WaterScreen() {
   const [goal, setGoal] = useState(8);
   const [weekData, setWeekData] = useState([]);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
+  const [alarmModalVisible, setAlarmModalVisible] = useState(false);
   const [tempGoal, setTempGoal] = useState('8');
+  const [alarmSettings, setAlarmSettings] = useState({ enabled: false, intervalMin: 60, startHour: 8, endHour: 22 });
 
   useFocusEffect(
     useCallback(() => { loadAll(); }, [])
@@ -28,6 +40,8 @@ export default function WaterScreen() {
     const c = await getWaterData();
     setCount(c);
     await loadWeekData(g);
+    const alarm = await getWaterAlarm();
+    setAlarmSettings(alarm);
   };
 
   const loadWeekData = async () => {
@@ -43,7 +57,6 @@ export default function WaterScreen() {
   };
 
   const addWater = async () => {
-    if (count >= goal) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const nc = count + 1;
     setCount(nc);
@@ -70,27 +83,44 @@ export default function WaterScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const saveAlarm = async (newSettings) => {
+    setAlarmSettings(newSettings);
+    await setWaterAlarm(newSettings);
+    if (newSettings.enabled) {
+      await requestPermissions();
+    }
+    await scheduleWaterAlarms(newSettings);
+    setAlarmModalVisible(false);
+  };
+
   const percent = Math.round((count / goal) * 100);
 
   const getMessage = () => {
-    if (percent === 0) return 'Haydi başlayalım!';
-    if (percent < 25) return 'İyi başlangıç!';
-    if (percent < 50) return 'Harika gidiyorsun!';
-    if (percent < 75) return 'Yarıyı geçtin!';
-    if (percent < 100) return 'Neredeyse tamam!';
-    return 'Hedefe ulaştın!';
+    if (percent === 0) return 'Haydi başlayalım! 💧';
+    if (percent < 25) return 'İyi başlangıç, devam et!';
+    if (percent < 50) return 'Harika gidiyorsun! 💪';
+    if (percent < 75) return 'Yarıyı geçtin, az kaldı!';
+    if (percent < 100) return 'Neredeyse tamam! Son hamle!';
+    return 'Tebrikler! Hedefe ulaştın! 🎉';
   };
 
   const s = getStyles(theme);
 
   return (
     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
-      {/* Goal Settings */}
-      <TouchableOpacity style={s.goalBtn} onPress={() => setGoalModalVisible(true)} activeOpacity={0.7}>
-        <Ionicons name="settings-outline" size={16} color={theme.primary} />
-        <Text style={s.goalBtnText}>Hedef: {goal} bardak</Text>
-        <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
-      </TouchableOpacity>
+      {/* Top Buttons */}
+      <View style={s.topRow}>
+        <TouchableOpacity style={s.goalBtn} onPress={() => setGoalModalVisible(true)} activeOpacity={0.7}>
+          <Ionicons name="settings-outline" size={16} color={theme.primary} />
+          <Text style={s.goalBtnText}>Hedef: {goal} bardak</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.goalBtn, alarmSettings.enabled && { backgroundColor: theme.accentLight }]} onPress={() => setAlarmModalVisible(true)} activeOpacity={0.7}>
+          <Ionicons name={alarmSettings.enabled ? 'notifications' : 'notifications-outline'} size={16} color={alarmSettings.enabled ? theme.accent : theme.primary} />
+          <Text style={[s.goalBtnText, alarmSettings.enabled && { color: theme.accent }]}>
+            {alarmSettings.enabled ? `Her ${alarmSettings.intervalMin} dk` : 'Alarm'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Circle */}
       <View style={s.circleContainer}>
@@ -198,6 +228,70 @@ export default function WaterScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Water Alarm Modal */}
+      <Modal visible={alarmModalVisible} transparent animationType="fade">
+        <View style={s.modalOverlay}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Su Hatırlatıcı</Text>
+            <Text style={s.modalSub}>Düzenli aralıklarla su içmeyi hatırlat</Text>
+
+            {/* Enable/Disable */}
+            <TouchableOpacity style={s.alarmToggleRow} onPress={() => setAlarmSettings(prev => ({ ...prev, enabled: !prev.enabled }))}>
+              <Ionicons name={alarmSettings.enabled ? 'notifications' : 'notifications-off'} size={22} color={alarmSettings.enabled ? theme.primary : theme.textMuted} />
+              <Text style={s.alarmToggleText}>{alarmSettings.enabled ? 'Hatırlatıcı Açık' : 'Hatırlatıcı Kapalı'}</Text>
+              <View style={[s.alarmToggle, alarmSettings.enabled && s.alarmToggleActive]}>
+                <View style={[s.alarmToggleDot, alarmSettings.enabled && s.alarmToggleDotActive]} />
+              </View>
+            </TouchableOpacity>
+
+            {alarmSettings.enabled && (
+              <>
+                {/* Interval */}
+                <Text style={s.alarmLabel}>Hatırlatma Aralığı</Text>
+                <View style={s.intervalGrid}>
+                  {INTERVAL_OPTIONS.map(opt => (
+                    <TouchableOpacity key={opt.min} style={[s.intervalBtn, alarmSettings.intervalMin === opt.min && s.intervalBtnActive]} onPress={() => setAlarmSettings(prev => ({ ...prev, intervalMin: opt.min }))}>
+                      <Text style={[s.intervalText, alarmSettings.intervalMin === opt.min && { color: '#fff' }]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Time Range */}
+                <Text style={s.alarmLabel}>Aktif Saatler</Text>
+                <View style={s.timeRangeRow}>
+                  <View style={s.timeBox}>
+                    <TouchableOpacity onPress={() => setAlarmSettings(prev => ({ ...prev, startHour: Math.max(5, prev.startHour - 1) }))}>
+                      <Ionicons name="remove-circle-outline" size={24} color={theme.primary} />
+                    </TouchableOpacity>
+                    <Text style={s.timeText}>{String(alarmSettings.startHour).padStart(2, '0')}:00</Text>
+                    <TouchableOpacity onPress={() => setAlarmSettings(prev => ({ ...prev, startHour: Math.min(prev.endHour - 1, prev.startHour + 1) }))}>
+                      <Ionicons name="add-circle-outline" size={24} color={theme.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={s.timeSep}>—</Text>
+                  <View style={s.timeBox}>
+                    <TouchableOpacity onPress={() => setAlarmSettings(prev => ({ ...prev, endHour: Math.max(prev.startHour + 1, prev.endHour - 1) }))}>
+                      <Ionicons name="remove-circle-outline" size={24} color={theme.primary} />
+                    </TouchableOpacity>
+                    <Text style={s.timeText}>{String(alarmSettings.endHour).padStart(2, '0')}:00</Text>
+                    <TouchableOpacity onPress={() => setAlarmSettings(prev => ({ ...prev, endHour: Math.min(23, prev.endHour + 1) }))}>
+                      <Ionicons name="add-circle-outline" size={24} color={theme.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
+
+            <TouchableOpacity style={s.saveBtn} onPress={() => saveAlarm(alarmSettings)}>
+              <Text style={s.saveBtnText}>Kaydet</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setAlarmModalVisible(false)}>
+              <Text style={s.cancelBtnText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -205,10 +299,11 @@ export default function WaterScreen() {
 const getStyles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
 
+  topRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 12, paddingHorizontal: 16 },
   goalBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    alignSelf: 'center', backgroundColor: theme.primaryLight,
-    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginTop: 12,
+    backgroundColor: theme.primaryLight,
+    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8,
   },
   goalBtnText: { fontSize: 13, fontWeight: '600', color: theme.primary },
 
@@ -278,4 +373,32 @@ const getStyles = (theme) => StyleSheet.create({
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   cancelBtn: { padding: 10 },
   cancelBtnText: { fontSize: 14, color: theme.textSecondary },
+
+  // Alarm styles
+  alarmToggleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.bg, borderRadius: 14, padding: 14, marginBottom: 16,
+  },
+  alarmToggleText: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.text },
+  alarmToggle: {
+    width: 48, height: 28, borderRadius: 14,
+    backgroundColor: theme.surface, justifyContent: 'center', paddingHorizontal: 3,
+  },
+  alarmToggleActive: { backgroundColor: theme.primary },
+  alarmToggleDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
+  alarmToggleDotActive: { alignSelf: 'flex-end' },
+  alarmLabel: { fontSize: 14, fontWeight: '600', color: theme.textSecondary, marginBottom: 8 },
+  intervalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  intervalBtn: {
+    backgroundColor: theme.surface, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10,
+  },
+  intervalBtnActive: { backgroundColor: theme.primary },
+  intervalText: { fontSize: 14, fontWeight: '600', color: theme.text },
+  timeRangeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16 },
+  timeBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: theme.surface, borderRadius: 14, padding: 10,
+  },
+  timeText: { fontSize: 18, fontWeight: 'bold', color: theme.text, minWidth: 50, textAlign: 'center' },
+  timeSep: { fontSize: 18, color: theme.textMuted, fontWeight: 'bold' },
 });

@@ -5,22 +5,43 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme';
 import { getMedicines, saveMedicines } from '../storage';
+import { scheduleMedicineAlarm, cancelMedicineAlarm, getMedicineTimes, requestPermissions } from '../notifications';
 
 const COLORS = ['#2196F3', '#9C27B0', '#FF9800', '#4CAF50', '#E91E63', '#00BCD4', '#795548', '#607D8B'];
 
-// Notifications disabled in Expo Go - works in production builds
-async function scheduleMedicineNotification() {}
-async function rescheduleAll() {}
+const PERIOD_OPTIONS = [
+  { key: 'morning', label: 'Sabah', times: '08:00', icon: 'sunny-outline' },
+  { key: 'noon', label: 'Öğle', times: '12:00', icon: 'partly-sunny-outline' },
+  { key: 'evening', label: 'Akşam', times: '20:00', icon: 'moon-outline' },
+  { key: 'morning-evening', label: 'Sabah-Akşam', times: '08:00, 20:00', icon: 'repeat-outline' },
+  { key: 'morning-noon-evening', label: 'Sabah-Öğle-Akşam', times: '08:00, 12:00, 20:00', icon: 'time-outline' },
+  { key: 'once-daily', label: 'Günde 1 Kez', times: 'Saat seçin', icon: 'alarm-outline' },
+  { key: 'twice-daily', label: 'Günde 2 Kez', times: '08:00, 20:00', icon: 'repeat-outline' },
+  { key: 'three-daily', label: 'Günde 3 Kez', times: '08:00, 14:00, 20:00', icon: 'time-outline' },
+  { key: 'every-4h', label: 'Her 4 Saatte', times: '08:00, 12:00, 16:00, 20:00', icon: 'timer-outline' },
+  { key: 'every-6h', label: 'Her 6 Saatte', times: '06:00, 12:00, 18:00, 00:00', icon: 'timer-outline' },
+  { key: 'every-8h', label: 'Her 8 Saatte', times: '08:00, 16:00, 00:00', icon: 'timer-outline' },
+  { key: 'custom', label: 'Özel Saat', times: 'Saat girin', icon: 'create-outline' },
+];
+
+const STOMACH_OPTIONS = [
+  { key: 'any', label: 'Farketmez', icon: 'remove-circle-outline', color: '#607D8B' },
+  { key: 'empty', label: 'Aç Karnına', icon: 'water-outline', color: '#FF9800' },
+  { key: 'full', label: 'Tok Karnına', icon: 'restaurant-outline', color: '#4CAF50' },
+];
 
 export default function MedicineScreen() {
   const { theme } = useTheme();
   const [medicines, setMedicines] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
-  const [time, setTime] = useState('');
+  const [time, setTime] = useState('08:00');
   const [dose, setDose] = useState('');
   const [notes, setNotes] = useState('');
-  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [period, setPeriod] = useState('morning');
+  const [stomach, setStomach] = useState('any');
+  const [alarmEnabled, setAlarmEnabled] = useState(true);
+  const [showPeriodPicker, setShowPeriodPicker] = useState(false);
 
   useFocusEffect(
     useCallback(() => { loadMedicines(); }, [])
@@ -32,41 +53,52 @@ export default function MedicineScreen() {
   };
 
   const saveMedicine = async () => {
-    if (!name || !time) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!name) return;
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (e) {}
     const color = COLORS[medicines.length % COLORS.length];
-    const newMed = { id: Date.now(), name, time, dose, notes, taken: false, color, notify: notifyEnabled };
-    const updated = [...medicines, newMed].sort((a, b) => a.time.localeCompare(b.time));
+    const newMed = {
+      id: Date.now(), name, time, dose, notes, period, stomach, alarmEnabled,
+      taken: false, color,
+    };
+    const updated = [...medicines, newMed];
     setMedicines(updated);
     await saveMedicines(updated);
-    if (notifyEnabled) {
-      await scheduleMedicineNotification(newMed);
+
+    if (alarmEnabled) {
+      await requestPermissions();
+      await scheduleMedicineAlarm(newMed);
     }
-    setName(''); setTime(''); setDose(''); setNotes(''); setNotifyEnabled(true);
+
+    resetForm();
     setModalVisible(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch (e) {}
+  };
+
+  const resetForm = () => {
+    setName(''); setTime('08:00'); setDose(''); setNotes('');
+    setPeriod('morning'); setStomach('any'); setAlarmEnabled(true);
+    setShowPeriodPicker(false);
   };
 
   const toggleTaken = async (id) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (e) {}
     const updated = medicines.map(m => m.id === id ? { ...m, taken: !m.taken } : m);
     setMedicines(updated);
     await saveMedicines(updated);
-    await rescheduleAll(updated);
   };
 
   const deleteMedicine = async (id) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); } catch (e) {}
     const med = medicines.find(m => m.id === id);
     Alert.alert('İlacı Sil', `"${med.name}" ilacını silmek istediğinize emin misiniz?`, [
       { text: 'İptal', style: 'cancel' },
       {
         text: 'Sil', style: 'destructive',
         onPress: async () => {
+          await cancelMedicineAlarm(id);
           const updated = medicines.filter(m => m.id !== id);
           setMedicines(updated);
           await saveMedicines(updated);
-          await rescheduleAll(updated);
         }
       },
     ]);
@@ -76,6 +108,11 @@ export default function MedicineScreen() {
   const totalCount = medicines.length;
   const percent = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
   const s = getStyles(theme);
+
+  const getPeriodLabel = (p) => PERIOD_OPTIONS.find(o => o.key === p)?.label || p;
+  const getStomachLabel = (st) => STOMACH_OPTIONS.find(o => o.key === st)?.label || '';
+  const getStomachIcon = (st) => STOMACH_OPTIONS.find(o => o.key === st)?.icon || 'remove-circle-outline';
+  const getStomachColor = (st) => STOMACH_OPTIONS.find(o => o.key === st)?.color || '#607D8B';
 
   return (
     <View style={s.container}>
@@ -105,7 +142,7 @@ export default function MedicineScreen() {
               <Ionicons name="medkit-outline" size={48} color={theme.purple} />
             </View>
             <Text style={s.emptyTitle}>Henüz ilaç eklenmedi</Text>
-            <Text style={s.emptyText}>İlaçlarınızı ekleyin, bildirimlerle hatırlatma alın</Text>
+            <Text style={s.emptyText}>İlaçlarınızı ekleyin, alarmlarla hatırlatma alın</Text>
             <TouchableOpacity style={s.emptyBtn} onPress={() => setModalVisible(true)}>
               <Ionicons name="add-circle-outline" size={20} color="#fff" />
               <Text style={s.emptyBtnText}>İlk İlacı Ekle</Text>
@@ -113,84 +150,147 @@ export default function MedicineScreen() {
           </View>
         ) : (
           <View style={s.listContainer}>
-            {medicines.map((med) => (
-              <TouchableOpacity
-                key={med.id} style={[s.card, med.taken && s.cardTaken]}
-                onPress={() => toggleTaken(med.id)}
-                onLongPress={() => deleteMedicine(med.id)} activeOpacity={0.7}
-              >
-                <View style={[s.colorStripe, { backgroundColor: med.color || theme.primary }]} />
-                <View style={s.cardContent}>
-                  <View style={s.cardTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.medName, med.taken && s.medNameTaken]}>{med.name}</Text>
-                      <View style={s.medDetails}>
-                        <View style={s.detailChip}>
-                          <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
-                          <Text style={s.medTime}>{med.time}</Text>
-                        </View>
-                        {med.dose ? (
+            {medicines.map((med) => {
+              const times = getMedicineTimes(med);
+              return (
+                <TouchableOpacity
+                  key={med.id} style={[s.card, med.taken && s.cardTaken]}
+                  onPress={() => toggleTaken(med.id)}
+                  onLongPress={() => deleteMedicine(med.id)} activeOpacity={0.7}
+                >
+                  <View style={[s.colorStripe, { backgroundColor: med.color || theme.primary }]} />
+                  <View style={s.cardContent}>
+                    <View style={s.cardTop}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.medName, med.taken && s.medNameTaken]}>{med.name}</Text>
+                        <View style={s.medDetails}>
                           <View style={s.detailChip}>
-                            <Ionicons name="medical-outline" size={14} color={theme.textSecondary} />
-                            <Text style={s.medDose}>{med.dose}</Text>
+                            <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
+                            <Text style={s.medTime}>{times.join(', ')}</Text>
                           </View>
-                        ) : null}
-                        {med.notify !== false && (
-                          <Ionicons name="notifications" size={14} color={theme.warning} />
-                        )}
+                          {med.dose ? (
+                            <View style={s.detailChip}>
+                              <Ionicons name="medical-outline" size={14} color={theme.textSecondary} />
+                              <Text style={s.medDose}>{med.dose}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <View style={s.medTags}>
+                          <View style={[s.tag, { backgroundColor: (med.color || theme.primary) + '20' }]}>
+                            <Text style={[s.tagText, { color: med.color || theme.primary }]}>{getPeriodLabel(med.period || 'custom')}</Text>
+                          </View>
+                          {med.stomach && med.stomach !== 'any' && (
+                            <View style={[s.tag, { backgroundColor: getStomachColor(med.stomach) + '20' }]}>
+                              <Ionicons name={getStomachIcon(med.stomach)} size={12} color={getStomachColor(med.stomach)} />
+                              <Text style={[s.tagText, { color: getStomachColor(med.stomach) }]}>{getStomachLabel(med.stomach)}</Text>
+                            </View>
+                          )}
+                          {med.alarmEnabled && (
+                            <Ionicons name="notifications" size={14} color={theme.warning} />
+                          )}
+                        </View>
+                        {med.notes ? <Text style={s.medNotes}>{med.notes}</Text> : null}
                       </View>
-                      {med.notes ? <Text style={s.medNotes}>{med.notes}</Text> : null}
-                    </View>
-                    <View style={[s.checkbox, med.taken && s.checkboxTaken]}>
-                      {med.taken && <Ionicons name="checkmark" size={18} color="#fff" />}
+                      <View style={[s.checkbox, med.taken && s.checkboxTaken]}>
+                        {med.taken && <Ionicons name="checkmark" size={18} color="#fff" />}
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
             <Text style={s.hintText}>Silmek için basılı tutun</Text>
           </View>
         )}
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setModalVisible(true); }} activeOpacity={0.8}>
+      <TouchableOpacity style={s.fab} onPress={() => { try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (e) {} setModalVisible(true); }} activeOpacity={0.8}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
+      {/* Add Medicine Modal */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={s.modalOverlay}>
-          <View style={s.modal}>
-            <View style={s.modalHandle} />
-            <Text style={s.modalTitle}>Yeni İlaç Ekle</Text>
-            <Text style={s.inputLabel}>İlaç Adı *</Text>
-            <TextInput style={s.input} placeholder="Örn: Parol, Aspirin..." value={name} onChangeText={setName} placeholderTextColor={theme.textMuted} />
-            <Text style={s.inputLabel}>Saat *</Text>
-            <TextInput style={s.input} placeholder="Örn: 08:00" value={time} onChangeText={setTime} placeholderTextColor={theme.textMuted} />
-            <Text style={s.inputLabel}>Doz</Text>
-            <TextInput style={s.input} placeholder="Örn: 1 tablet, 5ml..." value={dose} onChangeText={setDose} placeholderTextColor={theme.textMuted} />
-            <Text style={s.inputLabel}>Not</Text>
-            <TextInput style={[s.input, { minHeight: 50, textAlignVertical: 'top' }]} placeholder="Yemekten sonra al..." value={notes} onChangeText={setNotes} multiline placeholderTextColor={theme.textMuted} />
+          <ScrollView contentContainerStyle={{ justifyContent: 'flex-end', flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+            <View style={s.modal}>
+              <View style={s.modalHandle} />
+              <Text style={s.modalTitle}>Yeni İlaç Ekle</Text>
 
-            {/* Notification Toggle */}
-            <TouchableOpacity style={s.notifyRow} onPress={() => setNotifyEnabled(!notifyEnabled)}>
-              <Ionicons name={notifyEnabled ? 'notifications' : 'notifications-off'} size={22} color={notifyEnabled ? theme.primary : theme.textMuted} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.notifyText}>Bildirim Hatırlatması</Text>
-                <Text style={s.notifyHint}>Her gün belirtilen saatte bildirim alın</Text>
-              </View>
-              <View style={[s.toggle, notifyEnabled && s.toggleActive]}>
-                <View style={[s.toggleDot, notifyEnabled && s.toggleDotActive]} />
-              </View>
-            </TouchableOpacity>
+              <Text style={s.inputLabel}>İlaç Adı *</Text>
+              <TextInput style={s.input} placeholder="Örn: Parol, Aspirin..." value={name} onChangeText={setName} placeholderTextColor={theme.textMuted} />
 
-            <TouchableOpacity style={[s.saveBtn, (!name || !time) && s.saveBtnDisabled]} onPress={saveMedicine} disabled={!name || !time}>
-              <Text style={s.saveBtnText}>Kaydet</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); setName(''); setTime(''); setDose(''); setNotes(''); setNotifyEnabled(true); }}>
-              <Text style={s.cancelBtnText}>İptal</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={s.inputLabel}>Doz</Text>
+              <TextInput style={s.input} placeholder="Örn: 1 tablet, 5ml, 500mg..." value={dose} onChangeText={setDose} placeholderTextColor={theme.textMuted} />
+
+              {/* Period Selection */}
+              <Text style={s.inputLabel}>Kullanım Periyodu *</Text>
+              <TouchableOpacity style={s.periodSelector} onPress={() => setShowPeriodPicker(!showPeriodPicker)}>
+                <Ionicons name={PERIOD_OPTIONS.find(o => o.key === period)?.icon || 'time-outline'} size={20} color={theme.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.periodSelectedText}>{getPeriodLabel(period)}</Text>
+                  <Text style={s.periodSelectedTimes}>{PERIOD_OPTIONS.find(o => o.key === period)?.times}</Text>
+                </View>
+                <Ionicons name={showPeriodPicker ? 'chevron-up' : 'chevron-down'} size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+
+              {showPeriodPicker && (
+                <View style={s.periodList}>
+                  {PERIOD_OPTIONS.map(opt => (
+                    <TouchableOpacity key={opt.key} style={[s.periodOption, period === opt.key && s.periodOptionActive]} onPress={() => { setPeriod(opt.key); setShowPeriodPicker(false); }}>
+                      <Ionicons name={opt.icon} size={18} color={period === opt.key ? '#fff' : theme.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.periodLabel, period === opt.key && { color: '#fff' }]}>{opt.label}</Text>
+                        <Text style={[s.periodTimes, period === opt.key && { color: 'rgba(255,255,255,0.7)' }]}>{opt.times}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Custom Time - show for custom and once-daily */}
+              {(period === 'custom' || period === 'once-daily') && (
+                <>
+                  <Text style={s.inputLabel}>Saat *</Text>
+                  <TextInput style={s.input} placeholder="Örn: 08:00" value={time} onChangeText={setTime} placeholderTextColor={theme.textMuted} />
+                </>
+              )}
+
+              {/* Stomach */}
+              <Text style={s.inputLabel}>Aç / Tok Karnına</Text>
+              <View style={s.stomachRow}>
+                {STOMACH_OPTIONS.map(opt => (
+                  <TouchableOpacity key={opt.key} style={[s.stomachBtn, stomach === opt.key && { backgroundColor: opt.color }]} onPress={() => setStomach(opt.key)}>
+                    <Ionicons name={opt.icon} size={18} color={stomach === opt.key ? '#fff' : opt.color} />
+                    <Text style={[s.stomachText, stomach === opt.key && { color: '#fff' }]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Notes */}
+              <Text style={s.inputLabel}>Not</Text>
+              <TextInput style={[s.input, { minHeight: 50, textAlignVertical: 'top' }]} placeholder="Ek bilgi..." value={notes} onChangeText={setNotes} multiline placeholderTextColor={theme.textMuted} />
+
+              {/* Alarm Toggle */}
+              <TouchableOpacity style={s.alarmRow} onPress={() => setAlarmEnabled(!alarmEnabled)}>
+                <Ionicons name={alarmEnabled ? 'notifications' : 'notifications-off'} size={22} color={alarmEnabled ? theme.primary : theme.textMuted} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.alarmText}>Alarm / Bildirim</Text>
+                  <Text style={s.alarmHint}>{alarmEnabled ? 'Her gün belirtilen saatlerde bildirim alacaksınız' : 'Bildirim kapalı'}</Text>
+                </View>
+                <View style={[s.toggle, alarmEnabled && s.toggleActive]}>
+                  <View style={[s.toggleDot, alarmEnabled && s.toggleDotActive]} />
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[s.saveBtn, !name && s.saveBtnDisabled]} onPress={saveMedicine} disabled={!name}>
+                <Text style={s.saveBtnText}>Kaydet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); resetForm(); }}>
+                <Text style={s.cancelBtnText}>İptal</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -224,41 +324,70 @@ const getStyles = (theme) => StyleSheet.create({
   cardTaken: { opacity: 0.55 },
   colorStripe: { width: 5 },
   cardContent: { flex: 1, padding: 16 },
-  cardTop: { flexDirection: 'row', alignItems: 'center' },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   medName: { fontSize: 17, fontWeight: 'bold', color: theme.text },
   medNameTaken: { textDecorationLine: 'line-through', color: theme.textMuted },
-  medDetails: { flexDirection: 'row', gap: 12, marginTop: 6, alignItems: 'center' },
+  medDetails: { flexDirection: 'row', gap: 12, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' },
   detailChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   medTime: { fontSize: 13, color: theme.textSecondary },
   medDose: { fontSize: 13, color: theme.textSecondary },
+  medTags: { flexDirection: 'row', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' },
+  tag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  tagText: { fontSize: 11, fontWeight: '600' },
   medNotes: { fontSize: 12, color: theme.textMuted, marginTop: 6, fontStyle: 'italic' },
-  checkbox: { width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, borderColor: theme.inputBorder, alignItems: 'center', justifyContent: 'center' },
+  checkbox: { width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, borderColor: theme.inputBorder, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   checkboxTaken: { backgroundColor: theme.accent, borderColor: theme.accent },
   hintText: { textAlign: 'center', fontSize: 12, color: theme.textMuted, marginTop: 8 },
 
   fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
 
-  modalOverlay: { flex: 1, backgroundColor: theme.overlay, justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: theme.overlay },
   modal: { backgroundColor: theme.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingTop: 16 },
   modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.surface, alignSelf: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 22, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
   inputLabel: { fontSize: 13, fontWeight: '600', color: theme.textSecondary, marginBottom: 6 },
   input: { borderWidth: 1.5, borderColor: theme.inputBorder, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 14, backgroundColor: theme.inputBg, color: theme.text },
 
-  notifyRow: {
+  // Period
+  periodSelector: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.primaryLight, borderRadius: 14, padding: 14, marginBottom: 10,
+  },
+  periodSelectedText: { fontSize: 15, fontWeight: '600', color: theme.text },
+  periodSelectedTimes: { fontSize: 12, color: theme.textSecondary, marginTop: 2 },
+  periodList: { marginBottom: 10 },
+  periodOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginBottom: 4,
+  },
+  periodOptionActive: { backgroundColor: theme.primary },
+  periodLabel: { fontSize: 14, fontWeight: '600', color: theme.text },
+  periodTimes: { fontSize: 11, color: theme.textMuted },
+
+  // Stomach
+  stomachRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  stomachBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: theme.surface, borderRadius: 12, paddingVertical: 12,
+  },
+  stomachText: { fontSize: 12, fontWeight: '600', color: theme.text },
+
+  // Alarm
+  alarmRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: theme.bg, borderRadius: 14, padding: 14, marginBottom: 16,
   },
-  notifyText: { fontSize: 15, fontWeight: '600', color: theme.text },
-  notifyHint: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
+  alarmText: { fontSize: 15, fontWeight: '600', color: theme.text },
+  alarmHint: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
   toggle: {
     width: 48, height: 28, borderRadius: 14,
     backgroundColor: theme.surface, justifyContent: 'center', paddingHorizontal: 3,
   },
   toggleActive: { backgroundColor: theme.primary },
-  toggleDot: {
-    width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff',
-  },
+  toggleDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
   toggleDotActive: { alignSelf: 'flex-end' },
 
   saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4 },
