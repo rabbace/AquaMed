@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Platform, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemeProvider, useTheme } from './theme';
 import { hasSeenOnboarding } from './storage';
@@ -33,6 +34,7 @@ const TAB_ICONS = {
 
 function AppContent() {
   const { theme, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [showOnboarding, setShowOnboarding] = useState(null);
 
   useEffect(() => {
@@ -84,8 +86,8 @@ function AppContent() {
           tabBarInactiveTintColor: theme.textMuted,
           tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: -2 },
           tabBarStyle: {
-            height: Platform.OS === 'ios' ? 85 : 62,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+            height: (Platform.OS === 'ios' ? 60 : 56) + Math.max(insets.bottom, 0),
+            paddingBottom: Math.max(insets.bottom, 8),
             paddingTop: 6,
             backgroundColor: theme.tabBar,
             borderTopWidth: 1,
