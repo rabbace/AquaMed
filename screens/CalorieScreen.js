@@ -139,6 +139,8 @@ export default function CalorieScreen() {
   const [customF, setCustomF] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [tempGoal, setTempGoal] = useState('2000');
+  // Multi-select: { foodIndex: quantity }
+  const [selectedFoods, setSelectedFoods] = useState({});
 
   useFocusEffect(
     useCallback(() => { loadData(); }, [])
@@ -154,38 +156,80 @@ export default function CalorieScreen() {
     setGenderState(gen);
   };
 
-  const addFood = async (food) => {
-    const entry = {
-      id: Date.now(),
-      name: food.name,
-      cal: food.cal,
-      p: food.p || 0,
-      c: food.c || 0,
-      f: food.f || 0,
-      icon: food.icon || 'restaurant-outline',
-      mealType: selectedMealType,
-      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-    };
-    const updated = [...meals, entry];
+  const toggleFood = (index) => {
+    setSelectedFoods(prev => {
+      const copy = { ...prev };
+      if (copy[index] !== undefined) {
+        delete copy[index];
+      } else {
+        copy[index] = 1;
+      }
+      return copy;
+    });
+  };
+
+  const setFoodQty = (index, qty) => {
+    const val = parseInt(qty) || 0;
+    if (val <= 0) {
+      setSelectedFoods(prev => { const c = { ...prev }; delete c[index]; return c; });
+    } else {
+      setSelectedFoods(prev => ({ ...prev, [index]: Math.min(val, 20) }));
+    }
+  };
+
+  const saveSelectedFoods = async () => {
+    const entries = Object.entries(selectedFoods);
+    if (entries.length === 0) return;
+    const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const newItems = entries.map(([idx, qty]) => {
+      const food = filteredFoods[parseInt(idx)];
+      return {
+        id: Date.now() + parseInt(idx),
+        name: qty > 1 ? `${food.name} x${qty}` : food.name,
+        cal: food.cal * qty,
+        p: (food.p || 0) * qty,
+        c: (food.c || 0) * qty,
+        f: (food.f || 0) * qty,
+        icon: food.icon || 'restaurant-outline',
+        mealType: selectedMealType,
+        time,
+      };
+    });
+    const updated = [...meals, ...newItems];
     setMeals(updated);
     await saveCalorieData(updated);
+    setSelectedFoods({});
+    setModalVisible(false);
   };
 
   const addCustomFood = async () => {
     if (!customName || !customCal) return;
     const cal = parseInt(customCal);
     if (isNaN(cal) || cal <= 0) return;
-    await addFood({
-      name: customName, cal,
+    const entry = {
+      id: Date.now(),
+      name: customName,
+      cal,
       p: parseInt(customP) || 0,
       c: parseInt(customC) || 0,
       f: parseInt(customF) || 0,
       icon: 'create-outline',
-    });
+      mealType: selectedMealType,
+      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    };
+    const updated = [...meals, entry];
+    setMeals(updated);
+    await saveCalorieData(updated);
     setCustomName(''); setCustomCal(''); setCustomP(''); setCustomC(''); setCustomF('');
     setShowCustom(false);
     setModalVisible(false);
   };
+
+  const selectedCount = Object.keys(selectedFoods).length;
+  const selectedTotalCal = Object.entries(selectedFoods).reduce((sum, [idx, qty]) => {
+    const food = filteredFoods[parseInt(idx)];
+    return food ? sum + food.cal * qty : sum;
+  }, 0);
 
   const removeFood = async (id) => {
     const updated = meals.filter(m => m.id !== id);
@@ -343,7 +387,7 @@ export default function CalorieScreen() {
             <View key={type.key} style={s.mealCard}>
               <TouchableOpacity
                 style={s.mealHeader}
-                onPress={() => { setSelectedMealType(type.key); setModalVisible(true); setSearchText(''); setShowCustom(false); }}
+                onPress={() => { setSelectedMealType(type.key); setSelectedFoods({}); setModalVisible(true); setSearchText(''); setShowCustom(false); }}
                 activeOpacity={0.7}
               >
                 <View style={[s.mealIcon, { backgroundColor: type.color + '20' }]}>
@@ -362,7 +406,7 @@ export default function CalorieScreen() {
                 </View>
                 <TouchableOpacity
                   style={[s.addMealBtn, { backgroundColor: type.color }]}
-                  onPress={() => { setSelectedMealType(type.key); setModalVisible(true); setSearchText(''); setShowCustom(false); }}
+                  onPress={() => { setSelectedMealType(type.key); setSelectedFoods({}); setModalVisible(true); setSearchText(''); setShowCustom(false); }}
                 >
                   <Ionicons name="add" size={20} color="#fff" />
                 </TouchableOpacity>
@@ -431,11 +475,16 @@ export default function CalorieScreen() {
               </View>
             )}
 
-            <ScrollView style={s.foodList} showsVerticalScrollIndicator={false}>
+            <ScrollView style={s.foodList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {filteredFoods.map((food, i) => {
                 const isRecommended = food.category === selectedMealType;
+                const isSelected = selectedFoods[i] !== undefined;
+                const qty = selectedFoods[i] || 0;
                 return (
-                  <TouchableOpacity key={i} style={[s.foodItem, isRecommended && s.foodItemRecommended]} onPress={() => { addFood(food); setModalVisible(false); }} activeOpacity={0.7}>
+                  <TouchableOpacity key={i} style={[s.foodItem, isRecommended && s.foodItemRecommended, isSelected && s.foodItemSelected]} onPress={() => toggleFood(i)} activeOpacity={0.7}>
+                    <View style={[s.checkBox, isSelected && s.checkBoxActive]}>
+                      {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </View>
                     <View style={[s.foodIcon, { backgroundColor: (MEAL_TYPES.find(t => t.key === food.category)?.color || '#999') + '18' }]}>
                       <Ionicons name={food.icon} size={18} color={MEAL_TYPES.find(t => t.key === food.category)?.color || '#999'} />
                     </View>
@@ -444,6 +493,17 @@ export default function CalorieScreen() {
                       <Text style={s.foodMacro}>P:{food.p}g  K:{food.c}g  Y:{food.f}g</Text>
                     </View>
                     <Text style={s.foodCal}>{food.cal} kcal</Text>
+                    {isSelected && (
+                      <View style={s.qtyContainer}>
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(i, qty - 1)}>
+                          <Ionicons name="remove" size={16} color={theme.primary} />
+                        </TouchableOpacity>
+                        <Text style={s.qtyText}>{qty}</Text>
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(i, qty + 1)}>
+                          <Ionicons name="add" size={16} color={theme.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -451,6 +511,17 @@ export default function CalorieScreen() {
                 <Text style={s.noResult}>Sonuç bulunamadı</Text>
               )}
             </ScrollView>
+
+            {/* Selected summary bar */}
+            {selectedCount > 0 && (
+              <View style={s.selectionBar}>
+                <Text style={s.selectionText}>{selectedCount} öğe seçildi  •  {selectedTotalCal} kcal</Text>
+                <TouchableOpacity style={s.saveSelectedBtn} onPress={saveSelectedFoods} activeOpacity={0.7}>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={s.saveSelectedText}>Kaydet</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <TouchableOpacity style={s.customToggle} onPress={() => setShowCustom(!showCustom)}>
               <Ionicons name={showCustom ? 'chevron-up' : 'add-circle-outline'} size={20} color={theme.primary} />
@@ -474,7 +545,7 @@ export default function CalorieScreen() {
               </View>
             )}
 
-            <TouchableOpacity style={s.cancelBtn} onPress={() => setModalVisible(false)}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => { setSelectedFoods({}); setModalVisible(false); }}>
               <Text style={s.cancelBtnText}>Kapat</Text>
             </TouchableOpacity>
           </View>
@@ -643,6 +714,37 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: theme.primaryLight + '40',
     borderRadius: 10, marginHorizontal: -4, paddingHorizontal: 8,
   },
+  foodItemSelected: {
+    backgroundColor: theme.primary + '12',
+    borderRadius: 10, marginHorizontal: -4, paddingHorizontal: 8,
+  },
+  checkBox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+    borderColor: theme.textMuted, alignItems: 'center', justifyContent: 'center',
+  },
+  checkBoxActive: {
+    backgroundColor: theme.primary, borderColor: theme.primary,
+  },
+  qtyContainer: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 4, paddingVertical: 2,
+    marginLeft: 6,
+  },
+  qtyBtn: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: theme.primaryLight, alignItems: 'center', justifyContent: 'center',
+  },
+  qtyText: { fontSize: 15, fontWeight: 'bold', color: theme.text, minWidth: 20, textAlign: 'center' },
+  selectionBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, paddingHorizontal: 4, borderTopWidth: 1, borderTopColor: theme.cardBorder,
+  },
+  selectionText: { fontSize: 13, fontWeight: '600', color: theme.textSecondary },
+  saveSelectedBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: theme.primary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10,
+  },
+  saveSelectedText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   foodIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   foodName: { fontSize: 14, color: theme.text },
   foodMacro: { fontSize: 11, color: theme.textMuted, marginTop: 2 },

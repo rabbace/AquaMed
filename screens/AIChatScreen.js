@@ -1,7 +1,10 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard } from 'react-native';
 import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme';
+
+const DAILY_LIMIT = 5;
 
 const HEALTH_RESPONSES = {
   greetings: [
@@ -68,7 +71,29 @@ export default function AIChatScreen({ navigation }) {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [dailyCount, setDailyCount] = useState(0);
   const scrollRef = useRef(null);
+
+  const getTodayKey = () => {
+    const d = new Date();
+    return `ai_chat_${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  };
+
+  useEffect(() => {
+    const loadCount = async () => {
+      try {
+        const val = await AsyncStorage.getItem(getTodayKey());
+        if (val) setDailyCount(parseInt(val) || 0);
+      } catch {}
+    };
+    loadCount();
+  }, []);
+
+  const incrementCount = async () => {
+    const next = dailyCount + 1;
+    setDailyCount(next);
+    try { await AsyncStorage.setItem(getTodayKey(), String(next)); } catch {}
+  };
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
@@ -96,14 +121,25 @@ export default function AIChatScreen({ navigation }) {
     });
   }, [navigation, theme]);
 
+  const remainingMessages = Math.max(DAILY_LIMIT - dailyCount, 0);
+  const isLimitReached = dailyCount >= DAILY_LIMIT;
+
   const sendMessage = (text) => {
     const msg = text || input.trim();
     if (!msg) return;
+
+    if (isLimitReached) {
+      const limitMsg = { id: Date.now(), role: 'assistant', text: 'Günlük mesaj limitinize ulaştınız (5/5). Yarın tekrar soru sorabilirsiniz.\n\nAcil sağlık konularında lütfen bir sağlık kuruluşuna başvurun.' };
+      setMessages(prev => [...prev, limitMsg]);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+      return;
+    }
 
     const userMsg = { id: Date.now(), role: 'user', text: msg };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
+    incrementCount();
 
     setTimeout(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
@@ -177,23 +213,28 @@ export default function AIChatScreen({ navigation }) {
 
       {/* Input Bar */}
       <View style={s.inputBar}>
+        <View style={s.limitBadge}>
+          <Ionicons name="chatbubble-outline" size={12} color={isLimitReached ? theme.danger : theme.textMuted} />
+          <Text style={[s.limitText, isLimitReached && { color: theme.danger }]}>{remainingMessages}/{DAILY_LIMIT}</Text>
+        </View>
         <TextInput
-          style={s.input}
-          placeholder="Sağlıkla ilgili bir soru sorun..."
+          style={[s.input, isLimitReached && { opacity: 0.5 }]}
+          placeholder={isLimitReached ? 'Günlük limit doldu' : 'Sağlıkla ilgili bir soru sorun...'}
           placeholderTextColor={theme.textMuted}
           value={input}
           onChangeText={setInput}
           multiline
           maxLength={500}
+          editable={!isLimitReached}
           onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
         />
         <TouchableOpacity
-          style={[s.sendBtn, !input.trim() && s.sendBtnDisabled]}
+          style={[s.sendBtn, (!input.trim() || isLimitReached) && s.sendBtnDisabled]}
           onPress={() => sendMessage()}
-          disabled={!input.trim() || isTyping}
+          disabled={!input.trim() || isTyping || isLimitReached}
           activeOpacity={0.7}
         >
-          <Ionicons name="send" size={20} color={input.trim() ? '#fff' : theme.textMuted} />
+          <Ionicons name="send" size={20} color={input.trim() && !isLimitReached ? '#fff' : theme.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -257,6 +298,14 @@ const getStyles = (theme) => StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8,
     backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.cardBorder,
   },
+  limitBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    position: 'absolute', top: -18, left: 16,
+    backgroundColor: theme.card, borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderWidth: 1, borderColor: theme.cardBorder,
+  },
+  limitText: { fontSize: 10, fontWeight: '600', color: theme.textMuted },
   input: {
     flex: 1, backgroundColor: theme.inputBg, borderRadius: 20,
     paddingHorizontal: 16, paddingVertical: 10, fontSize: 15,
