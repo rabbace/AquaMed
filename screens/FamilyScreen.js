@@ -1,10 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert, KeyboardAvoidingView, Platform, Share } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme';
-import { getGender, setGender, getHealthProfile, setHealthProfile } from '../storage';
+import { getGender, setGender, getHealthProfile, setHealthProfile, isValidBackupKey } from '../storage';
 
 const AVATAR_COLORS = ['#2196F3', '#9C27B0', '#FF9800', '#4CAF50', '#E91E63', '#00BCD4', '#FF5722', '#3F51B5'];
 const AVATAR_ICONS = ['person', 'woman', 'man', 'happy', 'heart', 'flower', 'star', 'diamond'];
@@ -22,6 +22,7 @@ export default function FamilyScreen() {
   const [members, setMembers] = useState([{ id: 1, name: 'Ben', active: true, avatar: 0, color: 0 }]);
   const [modalVisible, setModalVisible] = useState(false);
   const [healthModalVisible, setHealthModalVisible] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
   const [newName, setNewName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(0);
   const [selectedColor, setSelectedColor] = useState(0);
@@ -31,6 +32,10 @@ export default function FamilyScreen() {
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
   const [activityLevel, setActivityLevel] = useState('moderate');
+
+  // Backup/restore state
+  const [restoreModalVisible, setRestoreModalVisible] = useState(false);
+  const [restoreText, setRestoreText] = useState('');
 
   useEffect(() => { loadMembers(); }, []);
 
@@ -52,15 +57,37 @@ export default function FamilyScreen() {
     setActivityLevel(hp.activityLevel || 'moderate');
   };
 
-  const addMember = async () => {
+  const openEditModal = (member) => {
+    setEditingMember(member);
+    setNewName(member.name);
+    setSelectedAvatar(member.avatar || 0);
+    setSelectedColor(member.color || 0);
+    setModalVisible(true);
+  };
+
+  const openAddModal = () => {
+    setEditingMember(null);
+    setNewName('');
+    setSelectedAvatar(0);
+    setSelectedColor(0);
+    setModalVisible(true);
+  };
+
+  const saveMember = async () => {
     if (!newName) return;
-    const updated = [
-      ...members.map(m => ({ ...m, active: false })),
-      { id: Date.now(), name: newName, active: true, avatar: selectedAvatar, color: selectedColor },
-    ];
+    let updated;
+    if (editingMember) {
+      updated = members.map(m => m.id === editingMember.id ? { ...m, name: newName, avatar: selectedAvatar, color: selectedColor } : m);
+    } else {
+      updated = [
+        ...members.map(m => ({ ...m, active: false })),
+        { id: Date.now(), name: newName, active: true, avatar: selectedAvatar, color: selectedColor },
+      ];
+    }
     setMembers(updated);
     await AsyncStorage.setItem('family', JSON.stringify(updated));
     setNewName(''); setSelectedAvatar(0); setSelectedColor(0);
+    setEditingMember(null);
     setModalVisible(false);
   };
 
@@ -92,6 +119,42 @@ export default function FamilyScreen() {
     await setGender(gender);
     await setHealthProfile({ height, weight, activityLevel });
     setHealthModalVisible(false);
+  };
+
+  const exportBackup = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const pairs = await AsyncStorage.multiGet(keys);
+      const data = {};
+      pairs.forEach(([k, v]) => { data[k] = v; });
+      const json = JSON.stringify(data);
+      await Share.share({ message: json, title: 'AquaMed Yedek' });
+    } catch (e) {
+      Alert.alert('Hata', 'Yedekleme sırasında bir hata oluştu.');
+    }
+  };
+
+  const importBackup = async () => {
+    try {
+      const parsed = JSON.parse(restoreText);
+      const entries = Object.entries(parsed);
+      if (entries.length === 0) { Alert.alert('Hata', 'Geçersiz yedek verisi.'); return; }
+      // Validate keys against whitelist
+      const validEntries = entries.filter(([key]) => isValidBackupKey(key));
+      const rejected = entries.length - validEntries.length;
+      if (validEntries.length === 0) { Alert.alert('Hata', 'Geçerli veri bulunamadı.'); return; }
+      // Size check - max 5MB
+      const totalSize = validEntries.reduce((s, [k, v]) => s + k.length + v.length, 0);
+      if (totalSize > 5 * 1024 * 1024) { Alert.alert('Hata', 'Yedek verisi çok büyük (max 5MB).'); return; }
+      await AsyncStorage.multiSet(validEntries);
+      setRestoreModalVisible(false);
+      setRestoreText('');
+      await loadMembers();
+      await loadHealthData();
+      Alert.alert('Başarılı', `${validEntries.length} veri geri yüklendi.${rejected > 0 ? ` ${rejected} geçersiz anahtar atlandı.` : ''} Uygulamayı yeniden başlatmanız önerilir.`);
+    } catch (e) {
+      Alert.alert('Hata', 'Geçersiz JSON formatı. Lütfen yedek verisini doğru yapıştırdığınızdan emin olun.');
+    }
   };
 
   // BMI calculation
@@ -216,6 +279,9 @@ export default function FamilyScreen() {
               <Text style={s.name}>{member.name}</Text>
               <Text style={s.status}>{member.active ? 'Aktif profil' : 'Seçmek için dokun'}</Text>
             </View>
+            <TouchableOpacity style={s.editBtn} onPress={() => openEditModal(member)}>
+              <Ionicons name="create-outline" size={18} color={theme.primary} />
+            </TouchableOpacity>
             {member.active && (
               <View style={s.activeBadge}>
                 <Ionicons name="checkmark-circle" size={14} color={theme.accent} />
@@ -224,55 +290,103 @@ export default function FamilyScreen() {
             )}
           </TouchableOpacity>
         ))}
+        {/* Backup / Restore */}
+        <View style={s.backupSection}>
+          <Text style={s.backupTitle}>Veri Yedekleme</Text>
+          <View style={s.backupRow}>
+            <TouchableOpacity style={s.backupBtn} onPress={exportBackup} activeOpacity={0.7}>
+              <Ionicons name="cloud-upload-outline" size={20} color={theme.primary} />
+              <Text style={s.backupBtnText}>Verileri Yedekle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.backupBtn, s.restoreBtn]} onPress={() => setRestoreModalVisible(true)} activeOpacity={0.7}>
+              <Ionicons name="cloud-download-outline" size={20} color={theme.accent} />
+              <Text style={[s.backupBtnText, { color: theme.accent }]}>Verileri Geri Yükle</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} onPress={() => setModalVisible(true)} activeOpacity={0.8}>
+      <TouchableOpacity style={s.fab} onPress={openAddModal} activeOpacity={0.8}>
         <Ionicons name="person-add" size={24} color="#fff" />
       </TouchableOpacity>
 
       {/* Add Profile Modal */}
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={s.modalOverlay}>
-          <View style={s.modal}>
-            <View style={s.modalHandle} />
-            <Text style={s.modalTitle}>Yeni Profil</Text>
-            <Text style={s.inputLabel}>İsim</Text>
-            <TextInput style={s.input} placeholder="Örn: Anne, Baba, Ayşe..." value={newName} onChangeText={setNewName} placeholderTextColor={theme.textMuted} />
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.modalOverlay}>
+            <ScrollView contentContainerStyle={{ justifyContent: 'flex-end', flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+              <View style={s.modal}>
+                <View style={s.modalHandle} />
+                <Text style={s.modalTitle}>{editingMember ? 'Profili Düzenle' : 'Yeni Profil'}</Text>
+                <Text style={s.inputLabel}>İsim</Text>
+                <TextInput style={s.input} placeholder="Örn: Anne, Baba, Ayşe..." value={newName} onChangeText={setNewName} placeholderTextColor={theme.textMuted} />
 
-            <Text style={s.inputLabel}>Avatar</Text>
-            <View style={s.avatarPicker}>
-              {AVATAR_ICONS.map((icon, i) => (
-                <TouchableOpacity key={i} style={[s.avatarOption, selectedAvatar === i && s.avatarOptionSelected]} onPress={() => setSelectedAvatar(i)}>
-                  <Ionicons name={icon} size={24} color={selectedAvatar === i ? theme.primary : theme.textMuted} />
+                <Text style={s.inputLabel}>Avatar</Text>
+                <View style={s.avatarPicker}>
+                  {AVATAR_ICONS.map((icon, i) => (
+                    <TouchableOpacity key={i} style={[s.avatarOption, selectedAvatar === i && s.avatarOptionSelected]} onPress={() => setSelectedAvatar(i)}>
+                      <Ionicons name={icon} size={24} color={selectedAvatar === i ? theme.primary : theme.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={s.inputLabel}>Renk</Text>
+                <View style={s.colorPicker}>
+                  {AVATAR_COLORS.map((color, i) => (
+                    <TouchableOpacity key={i} style={[s.colorOption, { backgroundColor: color }, selectedColor === i && s.colorOptionSelected]} onPress={() => setSelectedColor(i)}>
+                      {selectedColor === i && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={s.previewContainer}>
+                  <View style={[s.previewAvatar, { backgroundColor: AVATAR_COLORS[selectedColor] }]}>
+                    <Ionicons name={AVATAR_ICONS[selectedAvatar]} size={32} color="#fff" />
+                  </View>
+                  <Text style={s.previewName}>{newName || 'İsim'}</Text>
+                </View>
+
+                <TouchableOpacity style={[s.saveBtn, !newName && s.saveBtnDisabled]} onPress={saveMember} disabled={!newName}>
+                  <Text style={s.saveBtnText}>{editingMember ? 'Kaydet' : 'Profil Ekle'}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={s.inputLabel}>Renk</Text>
-            <View style={s.colorPicker}>
-              {AVATAR_COLORS.map((color, i) => (
-                <TouchableOpacity key={i} style={[s.colorOption, { backgroundColor: color }, selectedColor === i && s.colorOptionSelected]} onPress={() => setSelectedColor(i)}>
-                  {selectedColor === i && <Ionicons name="checkmark" size={16} color="#fff" />}
+                <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); setNewName(''); setEditingMember(null); }}>
+                  <Text style={s.cancelBtnText}>İptal</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={s.previewContainer}>
-              <View style={[s.previewAvatar, { backgroundColor: AVATAR_COLORS[selectedColor] }]}>
-                <Ionicons name={AVATAR_ICONS[selectedAvatar]} size={32} color="#fff" />
               </View>
-              <Text style={s.previewName}>{newName || 'İsim'}</Text>
-            </View>
-
-            <TouchableOpacity style={[s.saveBtn, !newName && s.saveBtnDisabled]} onPress={addMember} disabled={!newName}>
-              <Text style={s.saveBtnText}>Profil Ekle</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.cancelBtn} onPress={() => { setModalVisible(false); setNewName(''); }}>
-              <Text style={s.cancelBtnText}>İptal</Text>
-            </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Restore Backup Modal */}
+      <Modal visible={restoreModalVisible} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.modalOverlay}>
+            <ScrollView contentContainerStyle={{ justifyContent: 'flex-end', flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+              <View style={s.modal}>
+                <View style={s.modalHandle} />
+                <Text style={s.modalTitle}>Verileri Geri Yükle</Text>
+                <Text style={s.restoreDesc}>Daha önce yedeklediğiniz JSON verisini aşağıya yapıştırın.</Text>
+                <TextInput
+                  style={[s.input, s.restoreInput]}
+                  placeholder='{"key": "value", ...}'
+                  value={restoreText}
+                  onChangeText={setRestoreText}
+                  multiline
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TouchableOpacity style={[s.saveBtn, !restoreText && s.saveBtnDisabled]} onPress={importBackup} disabled={!restoreText}>
+                  <Text style={s.saveBtnText}>Geri Yükle</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.cancelBtn} onPress={() => { setRestoreModalVisible(false); setRestoreText(''); }}>
+                  <Text style={s.cancelBtnText}>İptal</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Health Profile Modal */}
@@ -391,6 +505,7 @@ const getStyles = (theme) => StyleSheet.create({
   info: { flex: 1 },
   name: { fontSize: 17, fontWeight: 'bold', color: theme.text },
   status: { fontSize: 13, color: theme.textMuted, marginTop: 3 },
+  editBtn: { padding: 8, marginRight: 4 },
   activeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.accentLight, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   activeBadgeText: { fontSize: 12, fontWeight: 'bold', color: theme.accent },
 
@@ -434,9 +549,26 @@ const getStyles = (theme) => StyleSheet.create({
   activityLabel: { fontSize: 15, fontWeight: '600', color: theme.text },
   activityDesc: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
 
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8 },
+  // Backup
+  backupSection: {
+    marginHorizontal: 16, marginTop: 20, padding: 16,
+    backgroundColor: theme.card, borderRadius: 16,
+    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder, elevation: theme.dark ? 0 : 2,
+  },
+  backupTitle: { fontSize: 16, fontWeight: 'bold', color: theme.text, marginBottom: 12 },
+  backupRow: { flexDirection: 'row', gap: 10 },
+  backupBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: theme.primaryLight, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 10,
+  },
+  restoreBtn: { backgroundColor: theme.accentLight },
+  backupBtnText: { fontSize: 13, fontWeight: '600', color: theme.primary },
+  restoreDesc: { fontSize: 13, color: theme.textSecondary, marginBottom: 12, lineHeight: 18 },
+  restoreInput: { height: 120, textAlignVertical: 'top' },
+
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, paddingHorizontal: 20, alignItems: 'center', marginTop: 8 },
   saveBtnDisabled: { backgroundColor: theme.surface },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  cancelBtn: { padding: 14, alignItems: 'center' },
+  cancelBtn: { padding: 14, paddingHorizontal: 20, alignItems: 'center' },
   cancelBtnText: { color: theme.textSecondary, fontSize: 16 },
 });

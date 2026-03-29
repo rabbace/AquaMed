@@ -18,6 +18,7 @@
       "package": "com.rabbace.aquamed",
       "versionCode": 2,
       "softwareKeyboardLayoutMode": "pan",
+      "permissions": ["VIBRATE", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

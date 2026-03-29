@@ -1,10 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Modal, TextInput, Alert } from 'react-native';
 import { useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme';
-import { getWaterData, setWaterData, getWaterGoal, setWaterGoal, getWaterAlarm, setWaterAlarm } from '../storage';
+import { getWaterData, setWaterData, getWaterGoal, setWaterGoal, getWaterAlarm, setWaterAlarm, getHealthProfile } from '../storage';
 import { scheduleWaterAlarms, requestPermissions } from '../notifications';
 
 const INTERVAL_OPTIONS = [
@@ -28,6 +28,7 @@ export default function WaterScreen() {
   const [alarmModalVisible, setAlarmModalVisible] = useState(false);
   const [tempGoal, setTempGoal] = useState('8');
   const [alarmSettings, setAlarmSettings] = useState({ enabled: false, intervalMin: 60, startHour: 8, endHour: 22 });
+  const [recommendedGlasses, setRecommendedGlasses] = useState(null);
 
   useFocusEffect(
     useCallback(() => { loadAll(); }, [])
@@ -42,6 +43,12 @@ export default function WaterScreen() {
     await loadWeekData(g);
     const alarm = await getWaterAlarm();
     setAlarmSettings(alarm);
+    const profile = await getHealthProfile();
+    if (profile.weight && parseFloat(profile.weight) > 0) {
+      setRecommendedGlasses(Math.round(parseFloat(profile.weight) * 0.033 / 0.25));
+    } else {
+      setRecommendedGlasses(null);
+    }
   };
 
   const loadWeekData = async () => {
@@ -195,6 +202,16 @@ export default function WaterScreen() {
         <Ionicons name="information-circle" size={22} color={theme.accent} />
         <Text style={s.infoText}>Yetişkinlerin günde ortalama 2 litre (8 bardak) su içmesi önerilir.</Text>
       </View>
+
+      <TouchableOpacity style={s.resetBtn} onPress={() => {
+        Alert.alert('Sıfırla', 'Bugünkü su verisini sıfırlamak istediğinize emin misiniz?', [
+          { text: 'İptal', style: 'cancel' },
+          { text: 'Sıfırla', style: 'destructive', onPress: async () => { setCount(0); await setWaterData(0); } },
+        ]);
+      }}>
+        <Ionicons name="refresh-outline" size={18} color={theme.danger} />
+        <Text style={s.resetBtnText}>Bugünü Sıfırla</Text>
+      </TouchableOpacity>
       <View style={{ height: 24 }} />
 
       {/* Goal Modal */}
@@ -354,6 +371,12 @@ const getStyles = (theme) => StyleSheet.create({
     padding: 16, marginHorizontal: 16, marginTop: 16, gap: 12, alignItems: 'center',
   },
   infoText: { flex: 1, fontSize: 13, color: theme.accent, lineHeight: 20 },
+  resetBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: theme.danger + '40', backgroundColor: theme.dangerLight,
+  },
+  resetBtnText: { fontSize: 14, fontWeight: '600', color: theme.danger },
 
   modalOverlay: { flex: 1, backgroundColor: theme.overlay, justifyContent: 'center', alignItems: 'center' },
   modal: { backgroundColor: theme.card, borderRadius: 24, padding: 28, width: width - 64, alignItems: 'center' },
@@ -369,9 +392,9 @@ const getStyles = (theme) => StyleSheet.create({
     textAlign: 'center', fontSize: 28, fontWeight: 'bold', color: theme.text, backgroundColor: theme.inputBg,
   },
   goalHint: { fontSize: 12, color: theme.textMuted, marginTop: 12, marginBottom: 24 },
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, paddingHorizontal: 48, paddingVertical: 14, marginBottom: 8 },
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, paddingHorizontal: 48, paddingVertical: 14, marginBottom: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  cancelBtn: { padding: 10 },
+  cancelBtn: { padding: 10, paddingHorizontal: 20, alignItems: 'center' },
   cancelBtnText: { fontSize: 14, color: theme.textSecondary },
 
   // Alarm styles

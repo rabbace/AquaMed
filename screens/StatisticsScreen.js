@@ -112,6 +112,40 @@ export default function StatisticsScreen() {
         </View>
       </View>
 
+      {/* Weekly Summary */}
+      <View style={s.weeklySummaryCard}>
+        <Text style={s.chartTitle}>Haftalık Özet</Text>
+        <View style={s.summaryRow}>
+          <View style={s.summaryItem}>
+            <View style={[s.summaryIcon, { backgroundColor: theme.primaryLight }]}>
+              <Ionicons name="water" size={22} color={theme.primary} />
+            </View>
+            <Text style={s.summaryValue}>{avgWater}</Text>
+            <Text style={s.summaryLabel}>Ort. Su (bardak/gün)</Text>
+          </View>
+          <View style={s.summaryDivider} />
+          <View style={s.summaryItem}>
+            <View style={[s.summaryIcon, { backgroundColor: theme.warningLight || '#FFF3E0' }]}>
+              <Ionicons name="flame" size={22} color={theme.warning} />
+            </View>
+            <Text style={s.summaryValue}>
+              {weekCalories.length > 0 ? Math.round(weekCalories.reduce((sum, d) => sum + d.cal, 0) / 7) : 0}
+            </Text>
+            <Text style={s.summaryLabel}>Ort. Kalori (kcal/gün)</Text>
+          </View>
+          <View style={s.summaryDivider} />
+          <View style={s.summaryItem}>
+            <View style={[s.summaryIcon, { backgroundColor: theme.accentLight }]}>
+              <Ionicons name="medical" size={22} color={theme.accent} />
+            </View>
+            <Text style={s.summaryValue}>
+              {todayMeds.total > 0 ? Math.round((todayMeds.taken / todayMeds.total) * 100) : 0}%
+            </Text>
+            <Text style={s.summaryLabel}>İlaç Uyumu (bugün)</Text>
+          </View>
+        </View>
+      </View>
+
       {/* Weekly Water Chart */}
       <View style={s.chartCard}>
         <View style={s.chartHeader}>
@@ -272,6 +306,19 @@ const getStyles = (theme) => StyleSheet.create({
   statCard: { flex: 1, borderRadius: 16, padding: 14, alignItems: 'center' },
   statValue: { fontSize: 28, fontWeight: 'bold', color: theme.text, marginTop: 6 },
   statLabel: { fontSize: 11, color: theme.textSecondary, marginTop: 2 },
+
+  weeklySummaryCard: {
+    backgroundColor: theme.card, borderRadius: 16, padding: 20,
+    marginHorizontal: 16, marginTop: 16,
+    borderWidth: theme.dark ? 1 : 0, borderColor: theme.cardBorder,
+    elevation: theme.dark ? 0 : 2,
+  },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  summaryItem: { flex: 1, alignItems: 'center', gap: 6 },
+  summaryIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  summaryValue: { fontSize: 20, fontWeight: 'bold', color: theme.text },
+  summaryLabel: { fontSize: 10, color: theme.textMuted, textAlign: 'center' },
+  summaryDivider: { width: 1, height: 50, backgroundColor: theme.cardBorder },
 
   chartCard: {
     backgroundColor: theme.card, borderRadius: 16, padding: 20,

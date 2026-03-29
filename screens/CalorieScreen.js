@@ -1,9 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Dimensions, Alert } from 'react-native';
 import { useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
-import { getCalorieData, saveCalorieData, getCalorieGoal, setCalorieGoal, getGender, setGender } from '../storage';
+import { getCalorieData, saveCalorieData, getCalorieGoal, setCalorieGoal, getGender, setGender, getFavoriteFoods, toggleFavoriteFood } from '../storage';
 
 const { width } = Dimensions.get('window');
 
@@ -139,6 +139,8 @@ export default function CalorieScreen() {
   const [customF, setCustomF] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [tempGoal, setTempGoal] = useState('2000');
+  const [favorites, setFavorites] = useState([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   // Multi-select: { foodIndex: quantity }
   const [selectedFoods, setSelectedFoods] = useState({});
 
@@ -154,6 +156,8 @@ export default function CalorieScreen() {
     setTempGoal(String(g));
     const gen = await getGender();
     setGenderState(gen);
+    const favs = await getFavoriteFoods();
+    setFavorites(favs);
   };
 
   // selectedFoods: { foodName: quantity }
@@ -276,9 +280,18 @@ export default function CalorieScreen() {
     };
   };
 
+  const handleToggleFavorite = async (foodName) => {
+    const updated = await toggleFavoriteFood(foodName);
+    setFavorites(updated);
+  };
+
   const filteredFoods = FOOD_DATABASE.filter(f =>
     f.name.toLowerCase().includes(searchText.toLowerCase())
-  ).sort((a, b) => {
+  ).filter(f => showFavoritesOnly ? favorites.includes(f.name) : true)
+  .sort((a, b) => {
+    const aFav = favorites.includes(a.name) ? 1 : 0;
+    const bFav = favorites.includes(b.name) ? 1 : 0;
+    if (aFav !== bFav) return bFav - aFav;
     if (a.category === selectedMealType && b.category !== selectedMealType) return -1;
     if (a.category !== selectedMealType && b.category === selectedMealType) return 1;
     return 0;
@@ -440,6 +453,17 @@ export default function CalorieScreen() {
             </View>
           );
         })}
+        {meals.length > 0 && (
+          <TouchableOpacity style={s.resetBtn} onPress={() => {
+            Alert.alert('Sıfırla', 'Bugünkü tüm kalori verilerini silmek istediğinize emin misiniz?', [
+              { text: 'İptal', style: 'cancel' },
+              { text: 'Sıfırla', style: 'destructive', onPress: async () => { setMeals([]); await saveCalorieData([]); } },
+            ]);
+          }}>
+            <Ionicons name="refresh-outline" size={18} color={theme.danger} />
+            <Text style={s.resetBtnText}>Bugünü Sıfırla</Text>
+          </TouchableOpacity>
+        )}
         <View style={{ height: 24 }} />
       </ScrollView>
 
@@ -466,6 +490,15 @@ export default function CalorieScreen() {
                   <Ionicons name="close-circle" size={20} color={theme.textMuted} />
                 </TouchableOpacity>
               )}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={[s.favFilterBtn, showFavoritesOnly && s.favFilterBtnActive]}
+                onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}>
+                <Ionicons name={showFavoritesOnly ? 'heart' : 'heart-outline'} size={16} color={showFavoritesOnly ? '#fff' : theme.danger} />
+                <Text style={[s.favFilterText, showFavoritesOnly && { color: '#fff' }]}>Favoriler ({favorites.length})</Text>
+              </TouchableOpacity>
             </View>
 
             {!searchText && (
@@ -495,6 +528,9 @@ export default function CalorieScreen() {
                       <Text style={s.foodMacro}>P:{food.p}g  K:{food.c}g  Y:{food.f}g</Text>
                     </View>
                     <Text style={s.foodCal}>{food.cal} kcal</Text>
+                    <TouchableOpacity onPress={() => handleToggleFavorite(food.name)} style={{ padding: 4 }}>
+                      <Ionicons name={favorites.includes(food.name) ? 'heart' : 'heart-outline'} size={18} color={theme.danger} />
+                    </TouchableOpacity>
                     {isSelected && (
                       <View style={s.qtyContainer}>
                         <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(food.name, qty - 1)}>
@@ -705,6 +741,12 @@ const getStyles = (theme) => StyleSheet.create({
 
   categoryHint: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 4, marginBottom: 4 },
   categoryHintText: { fontSize: 12, color: theme.textMuted, fontStyle: 'italic' },
+  favFilterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  favFilterBtnActive: { backgroundColor: theme.danger },
+  favFilterText: { fontSize: 13, fontWeight: '600', color: theme.danger },
 
   foodList: { maxHeight: 280 },
   foodItem: {
@@ -769,8 +811,14 @@ const getStyles = (theme) => StyleSheet.create({
   },
   customAddText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
-  cancelBtn: { padding: 14, alignItems: 'center' },
+  cancelBtn: { padding: 14, paddingHorizontal: 20, alignItems: 'center' },
   cancelBtnText: { color: theme.textSecondary, fontSize: 16 },
+  resetBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: theme.danger + '40', backgroundColor: theme.dangerLight,
+  },
+  resetBtnText: { fontSize: 14, fontWeight: '600', color: theme.danger },
 
   goalModalOverlay: { flex: 1, backgroundColor: theme.overlay, justifyContent: 'center', alignItems: 'center' },
   goalModal: { backgroundColor: theme.card, borderRadius: 24, padding: 28, width: width - 48, alignItems: 'center' },
@@ -783,7 +831,7 @@ const getStyles = (theme) => StyleSheet.create({
     textAlign: 'center', fontSize: 24, fontWeight: 'bold', color: theme.text, backgroundColor: theme.inputBg,
   },
   goalHint: { fontSize: 11, color: theme.textMuted, marginTop: 12, marginBottom: 20, textAlign: 'center' },
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, paddingHorizontal: 48, paddingVertical: 14, marginBottom: 8 },
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, paddingHorizontal: 48, paddingVertical: 14, marginBottom: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 
   // Gender modal

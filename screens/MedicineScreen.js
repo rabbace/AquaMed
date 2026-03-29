@@ -42,6 +42,7 @@ export default function MedicineScreen() {
   const [stomach, setStomach] = useState('any');
   const [alarmEnabled, setAlarmEnabled] = useState(true);
   const [showPeriodPicker, setShowPeriodPicker] = useState(false);
+  const [stock, setStock] = useState('');
 
   useFocusEffect(
     useCallback(() => { loadMedicines(); }, [])
@@ -58,7 +59,7 @@ export default function MedicineScreen() {
     const color = COLORS[medicines.length % COLORS.length];
     const newMed = {
       id: Date.now(), name, time, dose, notes, period, stomach, alarmEnabled,
-      taken: false, color,
+      stock: parseInt(stock) || null, taken: false, color,
     };
     const updated = [...medicines, newMed];
     setMedicines(updated);
@@ -77,12 +78,19 @@ export default function MedicineScreen() {
   const resetForm = () => {
     setName(''); setTime('08:00'); setDose(''); setNotes('');
     setPeriod('morning'); setStomach('any'); setAlarmEnabled(true);
-    setShowPeriodPicker(false);
+    setShowPeriodPicker(false); setStock('');
   };
 
   const toggleTaken = async (id) => {
     try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (e) {}
-    const updated = medicines.map(m => m.id === id ? { ...m, taken: !m.taken } : m);
+    const updated = medicines.map(m => {
+      if (m.id !== id) return m;
+      const toggled = { ...m, taken: !m.taken };
+      if (!m.taken && m.stock != null && m.stock > 0) {
+        toggled.stock = m.stock - 1;
+      }
+      return toggled;
+    });
     setMedicines(updated);
     await saveMedicines(updated);
   };
@@ -190,6 +198,15 @@ export default function MedicineScreen() {
                           )}
                         </View>
                         {med.notes ? <Text style={s.medNotes}>{med.notes}</Text> : null}
+                        {med.stock != null && med.stock === 0 && (
+                          <Text style={[s.stockText, s.stockDanger]}>Stok bitti!</Text>
+                        )}
+                        {med.stock != null && med.stock > 0 && med.stock <= 3 && (
+                          <Text style={[s.stockText, s.stockWarning]}>{med.stock} adet kaldi</Text>
+                        )}
+                        {med.stock != null && med.stock > 3 && (
+                          <Text style={s.stockText}>{med.stock} adet kaldi</Text>
+                        )}
                       </View>
                       <View style={[s.checkbox, med.taken && s.checkboxTaken]}>
                         {med.taken && <Ionicons name="checkmark" size={18} color="#fff" />}
@@ -222,6 +239,9 @@ export default function MedicineScreen() {
 
               <Text style={s.inputLabel}>Doz</Text>
               <TextInput style={s.input} placeholder="Örn: 1 tablet, 5ml, 500mg..." value={dose} onChangeText={setDose} placeholderTextColor={theme.textMuted} />
+
+              <Text style={s.inputLabel}>Kalan Adet</Text>
+              <TextInput style={s.input} placeholder="Örn: 30" value={stock} onChangeText={setStock} keyboardType="number-pad" placeholderTextColor={theme.textMuted} />
 
               {/* Period Selection */}
               <Text style={s.inputLabel}>Kullanım Periyodu *</Text>
@@ -338,6 +358,9 @@ const getStyles = (theme) => StyleSheet.create({
   },
   tagText: { fontSize: 11, fontWeight: '600' },
   medNotes: { fontSize: 12, color: theme.textMuted, marginTop: 6, fontStyle: 'italic' },
+  stockText: { fontSize: 12, color: theme.textSecondary, marginTop: 4 },
+  stockWarning: { color: '#FF9800' },
+  stockDanger: { color: '#F44336' },
   checkbox: { width: 32, height: 32, borderRadius: 16, borderWidth: 2.5, borderColor: theme.inputBorder, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   checkboxTaken: { backgroundColor: theme.accent, borderColor: theme.accent },
   hintText: { textAlign: 'center', fontSize: 12, color: theme.textMuted, marginTop: 8 },
@@ -390,9 +413,9 @@ const getStyles = (theme) => StyleSheet.create({
   toggleDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
   toggleDotActive: { alignSelf: 'flex-end' },
 
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4 },
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 14, padding: 16, paddingHorizontal: 20, alignItems: 'center', marginTop: 4 },
   saveBtnDisabled: { backgroundColor: theme.surface },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  cancelBtn: { padding: 14, alignItems: 'center' },
+  cancelBtn: { padding: 14, paddingHorizontal: 20, alignItems: 'center' },
   cancelBtnText: { color: theme.textSecondary, fontSize: 16 },
 });

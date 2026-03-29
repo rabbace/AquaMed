@@ -7,7 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemeProvider, useTheme } from './theme';
-import { hasSeenOnboarding } from './storage';
+import { hasSeenOnboarding, cleanupOldData } from './storage';
 import { requestPermissions } from './notifications';
 import HomeScreen from './screens/HomeScreen';
 import WaterScreen from './screens/WaterScreen';
@@ -46,6 +46,7 @@ function AppContent() {
     setShowOnboarding(!seen);
     await SplashScreen.hideAsync();
     requestPermissions();
+    cleanupOldData(90); // silently clean data older than 90 days
   };
 
   if (showOnboarding === null) {

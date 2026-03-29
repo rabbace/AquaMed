@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme';
-import { getWaterData, getWaterGoal, getMedicines, getActiveProfileName, getCalorieData, getCalorieGoal } from '../storage';
+import { getWaterData, setWaterData, getWaterGoal, getMedicines, getActiveProfileName, getCalorieData, getCalorieGoal } from '../storage';
 
 const healthTips = [
   { icon: 'water', tip: 'Sabah kalktığınızda bir bardak su için, metabolizmanızı hızlandırır.' },
@@ -18,7 +18,7 @@ const healthTips = [
 ];
 
 export default function HomeScreen() {
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, isDark, toggleTheme, autoTheme, toggleAutoTheme } = useTheme();
   const [waterCount, setWaterCount] = useState(0);
   const [waterGoal, setWaterGoalState] = useState(8);
   const [medicines, setMedicines] = useState([]);
@@ -62,6 +62,13 @@ export default function HomeScreen() {
     return { text: 'İyi Akşamlar', icon: 'cloudy-night' };
   };
 
+  const addWater = async (amount) => {
+    const newCount = Math.max(0, waterCount + amount);
+    setWaterCount(newCount);
+    await setWaterData(newCount);
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+  };
+
   const greeting = getGreeting();
   const waterPercent = Math.round((waterCount / waterGoal) * 100);
   const takenMeds = medicines.filter(m => m.taken).length;
@@ -79,9 +86,14 @@ export default function HomeScreen() {
           <Text style={s.userName}>{activeMember}</Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 8 }}>
-          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleTheme(); }} style={s.themeBtn}>
-            <Ionicons name={isDark ? 'sunny' : 'moon'} size={20} color="#fff" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleAutoTheme(); }} style={[s.themeBtn, autoTheme && { backgroundColor: 'rgba(255,255,255,0.4)' }]}>
+              <Ionicons name="time-outline" size={18} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleTheme(); }} style={s.themeBtn} disabled={autoTheme}>
+              <Ionicons name={isDark ? 'sunny' : 'moon'} size={20} color={autoTheme ? 'rgba(255,255,255,0.4)' : '#fff'} />
+            </TouchableOpacity>
+          </View>
           <Text style={s.dateText}>
             {new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
           </Text>
@@ -145,11 +157,20 @@ export default function HomeScreen() {
         </View>
         <View style={s.waterGlasses}>
           {Array.from({ length: Math.min(waterGoal, 10) }).map((_, i) => (
-            <View key={i} style={[s.waterGlass, i < waterCount && s.waterGlassFull]}>
+            <TouchableOpacity key={i} style={[s.waterGlass, i < waterCount && s.waterGlassFull]} onPress={() => addWater(i < waterCount ? -1 : 1)}>
               <Ionicons name={i < waterCount ? 'water' : 'water-outline'} size={16} color={i < waterCount ? theme.primary : theme.textMuted} />
-            </View>
+            </TouchableOpacity>
           ))}
           {waterGoal > 10 && <Text style={s.moreText}>+{waterGoal - 10}</Text>}
+        </View>
+        <View style={s.waterActions}>
+          <TouchableOpacity style={s.waterActionBtn} onPress={() => addWater(-1)} disabled={waterCount <= 0}>
+            <Ionicons name="remove-circle" size={28} color={waterCount > 0 ? theme.danger : theme.textMuted} />
+          </TouchableOpacity>
+          <Text style={s.waterActionCount}>{waterCount}</Text>
+          <TouchableOpacity style={s.waterActionBtn} onPress={() => addWater(1)}>
+            <Ionicons name="add-circle" size={28} color={theme.primary} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -259,6 +280,13 @@ const getStyles = (theme) => StyleSheet.create({
   },
   waterGlassFull: { backgroundColor: theme.primaryLight },
   moreText: { fontSize: 12, color: theme.textMuted, fontWeight: '600' },
+  waterActions: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 20, marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: theme.cardBorder,
+  },
+  waterActionBtn: { padding: 4 },
+  waterActionCount: { fontSize: 24, fontWeight: 'bold', color: theme.primary, minWidth: 40, textAlign: 'center' },
 
   medsCard: {
     backgroundColor: theme.card, borderRadius: 16, padding: 20,

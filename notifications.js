@@ -87,26 +87,33 @@ export async function scheduleWaterAlarms(settings) {
       '💧 Bir bardak su vakti geldi!',
     ];
 
-    let idx = 0;
-    for (let h = settings.startHour; h < settings.endHour; h++) {
-      for (let m = 0; m < 60; m += settings.intervalMin) {
-        if (h === settings.startHour && m === 0) continue; // skip exact start
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '💧 Su Hatırlatıcı',
-            body: messages[idx % messages.length],
-            sound: 'default',
-            channelId: 'water',
-          },
-          trigger: {
-            type: 'daily',
-            hour: h,
-            minute: m,
-          },
-          identifier: `water_${h}_${m}`,
-        });
-        idx++;
-      }
+    // Calculate alarm times using total minutes from start
+    const startTotal = settings.startHour * 60;
+    const endTotal = settings.endHour * 60;
+    const alarms = [];
+
+    for (let t = startTotal + settings.intervalMin; t <= endTotal; t += settings.intervalMin) {
+      const h = Math.floor(t / 60);
+      const m = t % 60;
+      if (h >= 24) break;
+      alarms.push({ h, m });
+    }
+
+    for (let i = 0; i < alarms.length; i++) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '💧 Su Hatırlatıcı',
+          body: messages[i % messages.length],
+          sound: 'default',
+          channelId: 'water',
+        },
+        trigger: {
+          type: 'daily',
+          hour: alarms[i].h,
+          minute: alarms[i].m,
+        },
+        identifier: `water_${alarms[i].h}_${alarms[i].m}`,
+      });
     }
   } catch (e) {}
 }

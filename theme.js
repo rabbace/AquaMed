@@ -71,23 +71,51 @@ export const useTheme = () => useContext(ThemeContext);
 
 export function ThemeProvider({ children }) {
   const [isDark, setIsDark] = useState(false);
+  const [autoTheme, setAutoThemeState] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('theme').then(val => {
       if (val === 'dark') setIsDark(true);
     });
+    AsyncStorage.getItem('autoTheme').then(val => {
+      if (val === 'true') setAutoThemeState(true);
+    });
   }, []);
 
+  // Auto theme: dark between 20:00-07:00
+  useEffect(() => {
+    if (!autoTheme) return;
+    const checkTime = () => {
+      const h = new Date().getHours();
+      const shouldBeDark = h >= 20 || h < 7;
+      setIsDark(shouldBeDark);
+    };
+    checkTime();
+    const interval = setInterval(checkTime, 60000);
+    return () => clearInterval(interval);
+  }, [autoTheme]);
+
   const toggleTheme = async () => {
+    if (autoTheme) return; // ignore manual toggle when auto is on
     const newVal = !isDark;
     setIsDark(newVal);
     await AsyncStorage.setItem('theme', newVal ? 'dark' : 'light');
   };
 
+  const toggleAutoTheme = async () => {
+    const newVal = !autoTheme;
+    setAutoThemeState(newVal);
+    await AsyncStorage.setItem('autoTheme', newVal ? 'true' : 'false');
+    if (newVal) {
+      const h = new Date().getHours();
+      setIsDark(h >= 20 || h < 7);
+    }
+  };
+
   const theme = isDark ? darkTheme : lightTheme;
 
   return (
-    <ThemeContext.Provider value={{ theme, isDark, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, isDark, toggleTheme, autoTheme, toggleAutoTheme }}>
       {children}
     </ThemeContext.Provider>
   );
