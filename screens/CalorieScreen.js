@@ -156,24 +156,25 @@ export default function CalorieScreen() {
     setGenderState(gen);
   };
 
-  const toggleFood = (index) => {
+  // selectedFoods: { foodName: quantity }
+  const toggleFood = (foodName) => {
     setSelectedFoods(prev => {
       const copy = { ...prev };
-      if (copy[index] !== undefined) {
-        delete copy[index];
+      if (copy[foodName] !== undefined) {
+        delete copy[foodName];
       } else {
-        copy[index] = 1;
+        copy[foodName] = 1;
       }
       return copy;
     });
   };
 
-  const setFoodQty = (index, qty) => {
+  const setFoodQty = (foodName, qty) => {
     const val = parseInt(qty) || 0;
     if (val <= 0) {
-      setSelectedFoods(prev => { const c = { ...prev }; delete c[index]; return c; });
+      setSelectedFoods(prev => { const c = { ...prev }; delete c[foodName]; return c; });
     } else {
-      setSelectedFoods(prev => ({ ...prev, [index]: Math.min(val, 20) }));
+      setSelectedFoods(prev => ({ ...prev, [foodName]: Math.min(val, 20) }));
     }
   };
 
@@ -181,10 +182,11 @@ export default function CalorieScreen() {
     const entries = Object.entries(selectedFoods);
     if (entries.length === 0) return;
     const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    const newItems = entries.map(([idx, qty]) => {
-      const food = filteredFoods[parseInt(idx)];
+    const newItems = entries.map(([name, qty], i) => {
+      const food = FOOD_DATABASE.find(f => f.name === name);
+      if (!food) return null;
       return {
-        id: Date.now() + parseInt(idx),
+        id: Date.now() + i,
         name: qty > 1 ? `${food.name} x${qty}` : food.name,
         cal: food.cal * qty,
         p: (food.p || 0) * qty,
@@ -194,7 +196,7 @@ export default function CalorieScreen() {
         mealType: selectedMealType,
         time,
       };
-    });
+    }).filter(Boolean);
     const updated = [...meals, ...newItems];
     setMeals(updated);
     await saveCalorieData(updated);
@@ -226,8 +228,8 @@ export default function CalorieScreen() {
   };
 
   const selectedCount = Object.keys(selectedFoods).length;
-  const selectedTotalCal = Object.entries(selectedFoods).reduce((sum, [idx, qty]) => {
-    const food = filteredFoods[parseInt(idx)];
+  const selectedTotalCal = Object.entries(selectedFoods).reduce((sum, [name, qty]) => {
+    const food = FOOD_DATABASE.find(f => f.name === name);
     return food ? sum + food.cal * qty : sum;
   }, 0);
 
@@ -478,10 +480,10 @@ export default function CalorieScreen() {
             <ScrollView style={s.foodList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {filteredFoods.map((food, i) => {
                 const isRecommended = food.category === selectedMealType;
-                const isSelected = selectedFoods[i] !== undefined;
-                const qty = selectedFoods[i] || 0;
+                const isSelected = selectedFoods[food.name] !== undefined;
+                const qty = selectedFoods[food.name] || 0;
                 return (
-                  <TouchableOpacity key={i} style={[s.foodItem, isRecommended && s.foodItemRecommended, isSelected && s.foodItemSelected]} onPress={() => toggleFood(i)} activeOpacity={0.7}>
+                  <TouchableOpacity key={food.name} style={[s.foodItem, isRecommended && s.foodItemRecommended, isSelected && s.foodItemSelected]} onPress={() => toggleFood(food.name)} activeOpacity={0.7}>
                     <View style={[s.checkBox, isSelected && s.checkBoxActive]}>
                       {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
                     </View>
@@ -495,11 +497,11 @@ export default function CalorieScreen() {
                     <Text style={s.foodCal}>{food.cal} kcal</Text>
                     {isSelected && (
                       <View style={s.qtyContainer}>
-                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(i, qty - 1)}>
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(food.name, qty - 1)}>
                           <Ionicons name="remove" size={16} color={theme.primary} />
                         </TouchableOpacity>
                         <Text style={s.qtyText}>{qty}</Text>
-                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(i, qty + 1)}>
+                        <TouchableOpacity style={s.qtyBtn} onPress={() => setFoodQty(food.name, qty + 1)}>
                           <Ionicons name="add" size={16} color={theme.primary} />
                         </TouchableOpacity>
                       </View>
