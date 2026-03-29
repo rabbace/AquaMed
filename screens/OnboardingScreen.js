@@ -29,18 +29,32 @@ const PAGES = [
     description: 'İlaçlarınızı ekleyin, saatlerini belirleyin ve bildirimlerle hatırlatma alın.',
   },
   {
+    icon: 'flame',
+    color: '#E91E63',
+    title: 'Kalori Takibi',
+    subtitle: 'Ne yediğinizi kolayca kaydedin',
+    description: 'Kahvaltı, öğle, akşam ve atıştırmalıkları toplu seçin. Protein, karbonhidrat ve yağ değerlerini otomatik hesaplayın.',
+  },
+  {
     icon: 'people',
     color: '#FF9800',
     title: 'Aile Profilleri',
     subtitle: 'Tüm ailenin sağlığını takip edin',
-    description: 'Her aile üyesi için ayrı profil oluşturun. Herkesin su ve ilaç takibi bağımsız olsun.',
+    description: 'Her aile üyesi için ayrı profil oluşturun. BMI hesaplayın, fiziksel aktivite seviyenizi belirleyin.',
+  },
+  {
+    icon: 'bar-chart',
+    color: '#607D8B',
+    title: 'İstatistikler',
+    subtitle: 'Haftalık ilerlemenizi görün',
+    description: 'Su tüketimi, kalori alımı ve ilaç uyumunuzu grafiklerle takip edin. Makro besinlerinizi analiz edin.',
   },
   {
     icon: 'chatbubble-ellipses',
     color: '#4CAF50',
     title: 'AI Sağlık Asistanı',
     subtitle: 'Sorularınıza anında yanıt',
-    description: 'Beslenme, uyku, egzersiz ve ilaç kullanımı hakkında yapay zeka destekli bilgi alın.',
+    description: 'Beslenme, uyku, egzersiz ve ilaç kullanımı hakkında yapay zeka destekli bilgi alın. Günlük 5 soru hakkınız var.',
   },
 ];
 
