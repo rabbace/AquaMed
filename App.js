@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Platform, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemeProvider, useTheme } from './theme';
 import { hasSeenOnboarding } from './storage';
@@ -73,6 +73,8 @@ function AppContent() {
     fonts: DefaultTheme.fonts,
   };
 
+  const bottomPadding = Math.max(insets.bottom, 8);
+
   return (
     <NavigationContainer theme={navTheme}>
       <Tab.Navigator
@@ -86,8 +88,8 @@ function AppContent() {
           tabBarInactiveTintColor: theme.textMuted,
           tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: -2 },
           tabBarStyle: {
-            height: (Platform.OS === 'ios' ? 60 : 56) + Math.max(insets.bottom, 0),
-            paddingBottom: Math.max(insets.bottom, 8),
+            height: 56 + bottomPadding,
+            paddingBottom: bottomPadding,
             paddingTop: 6,
             backgroundColor: theme.tabBar,
             borderTopWidth: 1,
@@ -124,8 +126,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
