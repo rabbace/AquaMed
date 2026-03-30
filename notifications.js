@@ -45,9 +45,9 @@ export async function scheduleMedicineAlarm(med) {
           channelId: 'medicine',
         },
         trigger: {
-          type: 'daily',
           hour,
           minute,
+          repeats: true,
         },
         identifier: `med_${med.id}_${i}`,
       });
@@ -108,13 +108,40 @@ export async function scheduleWaterAlarms(settings) {
           channelId: 'water',
         },
         trigger: {
-          type: 'daily',
           hour: alarms[i].h,
           minute: alarms[i].m,
+          repeats: true,
         },
         identifier: `water_${alarms[i].h}_${alarms[i].m}`,
       });
     }
+  } catch (e) {}
+}
+
+export async function scheduleHabitReminder(habitId, name, emoji, hour, minute) {
+  try {
+    if (!Notifications) return;
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `${emoji} Alışkanlık Zamanı!`,
+        body: `${name} — yapmayı unutma!`,
+        sound: 'default',
+        channelId: 'water',
+      },
+      trigger: {
+        hour,
+        minute,
+        repeats: true,
+      },
+      identifier: `habit_${habitId}`,
+    });
+  } catch (e) {}
+}
+
+export async function cancelHabitReminder(habitId) {
+  try {
+    if (!Notifications) return;
+    await Notifications.cancelScheduledNotificationAsync(`habit_${habitId}`);
   } catch (e) {}
 }
 
