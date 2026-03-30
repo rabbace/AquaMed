@@ -200,7 +200,7 @@ export async function cleanupOldData(daysToKeep = 90) {
 
     for (const key of keys) {
       // Match water_PID_DATE and calories_PID_DATE patterns
-      const match = key.match(/^(water|calories)_\d+_(.+)$/);
+      const match = key.match(/^(water|calories|habit_log)_\d+_(.+)$/);
       if (match) {
         const dateStr = match[2];
         const date = new Date(dateStr);
@@ -217,11 +217,73 @@ export async function cleanupOldData(daysToKeep = 90) {
   } catch { return 0; }
 }
 
+// Habits
+export async function getHabits() {
+  try {
+    const pid = await getActiveProfileId();
+    const saved = await AsyncStorage.getItem(`habits_${pid}`);
+    return safeParse(saved, []);
+  } catch { return []; }
+}
+
+export async function saveHabits(habits) {
+  try {
+    const pid = await getActiveProfileId();
+    await AsyncStorage.setItem(`habits_${pid}`, JSON.stringify(habits));
+  } catch {}
+}
+
+export async function getHabitLog(date) {
+  try {
+    const pid = await getActiveProfileId();
+    const key = `habit_log_${pid}_${date || new Date().toDateString()}`;
+    const saved = await AsyncStorage.getItem(key);
+    return safeParse(saved, {});
+  } catch { return {}; }
+}
+
+export async function saveHabitLog(log, date) {
+  try {
+    const pid = await getActiveProfileId();
+    const key = `habit_log_${pid}_${date || new Date().toDateString()}`;
+    await AsyncStorage.setItem(key, JSON.stringify(log));
+  } catch {}
+}
+
+// Fasting
+export async function getFastingState() {
+  try {
+    const saved = await AsyncStorage.getItem('fasting_state');
+    return safeParse(saved, null);
+  } catch { return null; }
+}
+
+export async function saveFastingState(state) {
+  try {
+    if (state === null) await AsyncStorage.removeItem('fasting_state');
+    else await AsyncStorage.setItem('fasting_state', JSON.stringify(state));
+  } catch {}
+}
+
+export async function getFastingHistory() {
+  try {
+    const saved = await AsyncStorage.getItem('fasting_history');
+    return safeParse(saved, []);
+  } catch { return []; }
+}
+
+export async function saveFastingHistory(history) {
+  try {
+    await AsyncStorage.setItem('fasting_history', JSON.stringify(history));
+  } catch {}
+}
+
 // Allowed keys whitelist for backup validation
 const ALLOWED_KEY_PREFIXES = [
   'family', 'water_', 'waterGoal_', 'waterAlarm_', 'medicines_',
   'calorieGoal_', 'calories_', 'gender_', 'healthProfile_',
   'favorite_foods_', 'onboarding_done', 'theme', 'autoTheme', 'ai_chat_',
+  'habits_', 'habit_log_', 'fasting_state', 'fasting_history', 'themeId',
 ];
 
 export function isValidBackupKey(key) {

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../theme';
+import { useTheme, THEME_PRESETS } from '../theme';
 import { getGender, setGender, getHealthProfile, setHealthProfile, isValidBackupKey } from '../storage';
 
 const AVATAR_COLORS = ['#2196F3', '#9C27B0', '#FF9800', '#4CAF50', '#E91E63', '#00BCD4', '#FF5722', '#3F51B5'];
@@ -18,7 +18,7 @@ const ACTIVITY_LEVELS = [
 ];
 
 export default function FamilyScreen() {
-  const { theme } = useTheme();
+  const { theme, themeId, setThemeById } = useTheme();
   const [members, setMembers] = useState([{ id: 1, name: 'Ben', active: true, avatar: 0, color: 0 }]);
   const [modalVisible, setModalVisible] = useState(false);
   const [healthModalVisible, setHealthModalVisible] = useState(false);
@@ -290,6 +290,33 @@ export default function FamilyScreen() {
             )}
           </TouchableOpacity>
         ))}
+        {/* Theme Picker */}
+        <View style={s.backupSection}>
+          <Text style={s.backupTitle}>Uygulama Teması</Text>
+          <View style={s.themeGrid}>
+            {Object.values(THEME_PRESETS).map(preset => (
+              <TouchableOpacity
+                key={preset.id}
+                style={[s.themeCard, themeId === preset.id && { borderColor: preset.primary, borderWidth: 2.5 }]}
+                onPress={() => setThemeById(preset.id)}
+                activeOpacity={0.8}
+              >
+                <View style={[s.themeCircle, { backgroundColor: preset.primary }]}>
+                  <Text style={{ fontSize: 16 }}>{preset.emoji}</Text>
+                </View>
+                <Text style={[s.themeLabel, themeId === preset.id && { color: preset.primary, fontWeight: '700' }]}>
+                  {preset.name}
+                </Text>
+                {themeId === preset.id && (
+                  <View style={[s.themeCheck, { backgroundColor: preset.primary }]}>
+                    <Ionicons name="checkmark" size={10} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Backup / Restore */}
         <View style={s.backupSection}>
           <Text style={s.backupTitle}>Veri Yedekleme</Text>
@@ -548,6 +575,20 @@ const getStyles = (theme) => StyleSheet.create({
   activityBtnActive: { backgroundColor: theme.primary },
   activityLabel: { fontSize: 15, fontWeight: '600', color: theme.text },
   activityDesc: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
+
+  // Theme picker
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  themeCard: {
+    width: '30%', alignItems: 'center', padding: 10,
+    backgroundColor: theme.surface, borderRadius: 14,
+    borderWidth: 2, borderColor: 'transparent', position: 'relative',
+  },
+  themeCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  themeLabel: { fontSize: 11, color: theme.textSecondary, textAlign: 'center' },
+  themeCheck: {
+    position: 'absolute', top: 6, right: 6,
+    width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
+  },
 
   // Backup
   backupSection: {

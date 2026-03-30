@@ -16,6 +16,7 @@ import FamilyScreen from './screens/FamilyScreen';
 import AIChatScreen from './screens/AIChatScreen';
 import CalorieScreen from './screens/CalorieScreen';
 import StatisticsScreen from './screens/StatisticsScreen';
+import HabitScreen from './screens/HabitScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 
 SplashScreen.preventAutoHideAsync();
@@ -28,6 +29,7 @@ const TAB_ICONS = {
   'İlaçlar': { focused: 'medkit', unfocused: 'medkit-outline' },
   'Kalori': { focused: 'flame', unfocused: 'flame-outline' },
   'Asistan': { focused: 'chatbubble-ellipses', unfocused: 'chatbubble-ellipses-outline' },
+  'Alışkanlıklar': { focused: 'calendar', unfocused: 'calendar-outline' },
   'İstatistik': { focused: 'bar-chart', unfocused: 'bar-chart-outline' },
   'Profil': { focused: 'people', unfocused: 'people-outline' },
 };
@@ -118,6 +120,7 @@ function AppContent() {
             </TouchableOpacity>
           ),
         })} />
+        <Tab.Screen name="Alışkanlıklar" component={HabitScreen} options={{ title: 'Alışkanlıklar' }} />
         <Tab.Screen name="İstatistik" component={StatisticsScreen} />
         <Tab.Screen name="Profil" component={FamilyScreen} options={{ title: 'Aile Profilleri' }} />
       </Tab.Navigator>
