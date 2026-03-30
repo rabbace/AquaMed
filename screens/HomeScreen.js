@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { getWaterData, setWaterData, getWaterGoal, getMedicines, getActiveProfileName, getCalorieData, getCalorieGoal } from '../storage';
 
@@ -69,6 +70,7 @@ export default function HomeScreen() {
     try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
   };
 
+  const insets = useSafeAreaInsets();
   const greeting = getGreeting();
   const waterPercent = Math.round((waterCount / waterGoal) * 100);
   const takenMeds = medicines.filter(m => m.taken).length;
@@ -77,9 +79,9 @@ export default function HomeScreen() {
   const s = getStyles(theme);
 
   return (
-    <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={s.header}>
+    <View style={s.container}>
+      {/* Fixed Header */}
+      <View style={[s.header, { paddingTop: insets.top + 12 }]}>
         <View style={{ flex: 1 }}>
           <Ionicons name={greeting.icon} size={28} color="rgba(255,255,255,0.9)" />
           <Text style={s.greetingText}>{greeting.text},</Text>
@@ -103,6 +105,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <ScrollView showsVerticalScrollIndicator={false}>
       {/* Summary Cards */}
       <Text style={s.sectionTitle}>Günlük Özet</Text>
       <View style={s.summaryRow}>
@@ -221,15 +224,16 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ height: 24 }} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const getStyles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
   header: {
-    backgroundColor: theme.primary,
-    padding: 24, paddingTop: 50, paddingBottom: 32,
+    backgroundColor: theme.headerBg,
+    paddingHorizontal: 24, paddingBottom: 24,
     borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
     flexDirection: 'row', justifyContent: 'space-between',
   },
